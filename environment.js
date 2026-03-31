@@ -15,6 +15,8 @@ const smokeParticles = [];
 const brazierLights = [];
 const bannerMeshes = [];
 const dustParticles = [];
+const cheeringFigures = [];
+const projectiles = [];
 
 export function initEnvironment(scene, THREE_ref) {
   _scene = scene;
@@ -293,6 +295,99 @@ export function initEnvironment(scene, THREE_ref) {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  HELPER: STAGING AREA ROCKS
+  // ═══════════════════════════════════════════════════════════
+  function makeStagingAreaRocks(x, z, isWhite, group, nameSuffix) {
+    const rockGroup = new T.Group();
+    rockGroup.name = `stagingRocks_${nameSuffix}`;
+    rockGroup.position.set(x, 0, z);
+
+    const mat = isWhite ? ivoryStoneMat : darkStoneMat;
+    const geo = new T.DodecahedronGeometry(1, 1);
+
+    for (let i = 0; i < 8; i++) {
+      const rock = new T.Mesh(geo, mat);
+      rock.name = `rock_${i}`;
+      const px = (Math.random() - 0.5) * 6;
+      const pz = (Math.random() - 0.5) * 4;
+      rock.position.set(px, -0.5 + Math.random() * 0.8, pz);
+      rock.scale.set(0.5 + Math.random() * 1.5, 0.5 + Math.random() * 1.5, 0.5 + Math.random() * 1.5);
+      rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      rockGroup.add(rock);
+    }
+
+    group.add(rockGroup);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: CHEERING ARMY
+  // ═══════════════════════════════════════════════════════════
+  function makeArmy(x, z, rotY, isWhite, group, nameSuffix) {
+    const armyGroup = new T.Group();
+    armyGroup.name = `army_${nameSuffix}`;
+    armyGroup.position.set(x, 0, z);
+    armyGroup.rotation.y = rotY;
+
+    const color = isWhite ? 0xdddddd : 0x222222;
+    const accentColor = isWhite ? 0x4488cc : 0x882244;
+    const mat = new T.MeshStandardMaterial({ color: color, roughness: 0.8 });
+    const accentMat = new T.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
+
+    // Create a cluster of simple figures
+    for (let i = 0; i < 15; i++) {
+      const figure = new T.Group();
+      figure.name = `figure_${i}`;
+      const px = (Math.random() - 0.5) * 4;
+      const pz = (Math.random() - 0.5) * 3;
+      figure.position.set(px, 0, pz);
+
+      // Body
+      const body = new T.Mesh(new T.CylinderGeometry(0.1, 0.15, 0.6, 6), mat);
+      body.position.y = 0.3;
+      body.castShadow = true;
+      figure.add(body);
+
+      // Head
+      const head = new T.Mesh(new T.SphereGeometry(0.12, 8, 8), mat);
+      head.position.y = 0.7;
+      head.castShadow = true;
+      figure.add(head);
+
+      // Weapon/Banner (randomly assigned)
+      if (Math.random() > 0.5) {
+        const pole = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1.2, 4), new T.MeshStandardMaterial({ color: 0x4a3b2c }));
+        pole.position.set(0.15, 0.6, 0);
+        pole.rotation.z = -0.2 + Math.random() * 0.4;
+        pole.castShadow = true;
+        figure.add(pole);
+
+        if (Math.random() > 0.5) {
+          const banner = new T.Mesh(new T.PlaneGeometry(0.3, 0.5), accentMat);
+          banner.position.set(0.3, 1.0, 0);
+          banner.castShadow = true;
+          figure.add(banner);
+          bannerMeshes.push({ mesh: banner, offset: Math.random() * Math.PI * 2 });
+        }
+      }
+
+      // Add idle cheering animation data
+      figure.userData = {
+        phase: Math.random() * Math.PI * 2,
+        speed: 2 + Math.random() * 3,
+        baseY: 0,
+        isCheering: true
+      };
+      cheeringFigures.push(figure);
+
+      armyGroup.add(figure);
+    }
+
+    group.add(armyGroup);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  HELPER: SHIELD RACK
   // ═══════════════════════════════════════════════════════════
   function makeShieldRack(x, z, rotY, isNoble, group, nameSuffix) {
@@ -510,6 +605,14 @@ export function initEnvironment(scene, THREE_ref) {
   makeShieldRack(-10.5, -9.5, 0.3, true, whiteKingdomGroup, 'wRack_L');
   makeShieldRack( 10.5, -9.5,-0.3, true, whiteKingdomGroup, 'wRack_R');
 
+  // Cheering armies
+  makeArmy(-12, -14, 0.5, true, whiteKingdomGroup, 'wArmy_L');
+  makeArmy( 12, -14, -0.5, true, whiteKingdomGroup, 'wArmy_R');
+
+  // Staging area rocks
+  makeStagingAreaRocks(-14, -12, true, whiteKingdomGroup, 'wRocks_L');
+  makeStagingAreaRocks( 14, -12, true, whiteKingdomGroup, 'wRocks_R');
+
   // War drums
   makeWarDrum(-11.5,-11, whiteKingdomGroup, 'wDrum_L');
   makeWarDrum( 11.5,-11, whiteKingdomGroup, 'wDrum_R');
@@ -581,6 +684,14 @@ export function initEnvironment(scene, THREE_ref) {
   // Shield racks
   makeShieldRack(-10.5,  9.5, Math.PI-0.3, false, blackKingdomGroup, 'bRack_L');
   makeShieldRack( 10.5,  9.5, Math.PI+0.3, false, blackKingdomGroup, 'bRack_R');
+
+  // Cheering armies
+  makeArmy(-12, 14, Math.PI-0.5, false, blackKingdomGroup, 'bArmy_L');
+  makeArmy( 12, 14, Math.PI+0.5, false, blackKingdomGroup, 'bArmy_R');
+
+  // Staging area rocks
+  makeStagingAreaRocks(-14, 12, false, blackKingdomGroup, 'bRocks_L');
+  makeStagingAreaRocks( 14, 12, false, blackKingdomGroup, 'bRocks_R');
 
   // War drums
   makeWarDrum(-11.5, 11, blackKingdomGroup, 'bDrum_L');
@@ -712,6 +823,15 @@ export function updateEnvironment(time) {
     light.intensity = (isNobre ? 1.4 : 1.2) + flicker * 0.6;
   });
 
+  // Cheering figures
+  cheeringFigures.forEach(figure => {
+    const ud = figure.userData;
+    if (ud.isCheering) {
+      figure.position.y = ud.baseY + Math.abs(Math.sin(time * ud.speed + ud.phase)) * 0.2;
+      figure.rotation.z = Math.sin(time * ud.speed * 0.5 + ud.phase) * 0.1;
+    }
+  });
+
   // Banner sway
   bannerMeshes.forEach(({ mesh, offset }) => {
     mesh.rotation.z = Math.sin(time * 1.1 + offset) * 0.06;
@@ -755,6 +875,98 @@ export function updateEnvironment(time) {
     dust.rotation.y = time + dust.userData.phase;
     dust.rotation.x = time*0.5 + dust.userData.phase;
   });
+
+  // Projectiles
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.progress += p.speed * 0.016; // Assuming ~60fps delta
+    
+    if (p.progress < 0) {
+      p.mesh.visible = false;
+      continue;
+    }
+    p.mesh.visible = true;
+
+    if (p.progress >= 1) {
+      _scene.remove(p.mesh);
+      projectiles.splice(i, 1);
+      continue;
+    }
+    
+    // Parabolic arc
+    const currentX = p.startX + (p.endX - p.startX) * p.progress;
+    const currentZ = p.startZ + (p.endZ - p.startZ) * p.progress;
+    const currentY = Math.sin(p.progress * Math.PI) * p.height;
+    
+    p.mesh.position.set(currentX, currentY, currentZ);
+    
+    if (p.isFireball) {
+      p.mesh.rotation.x += 0.1;
+      p.mesh.rotation.y += 0.2;
+    } else {
+      // Point arrow along trajectory
+      const dx = p.endX - p.startX;
+      const dz = p.endZ - p.startZ;
+      const dy = Math.cos(p.progress * Math.PI) * p.height * Math.PI; // Derivative of sin(t*PI)*h
+      
+      const angleY = Math.atan2(dx, dz);
+      const angleX = Math.atan2(dy, Math.sqrt(dx*dx + dz*dz));
+      
+      p.mesh.rotation.y = angleY;
+      p.mesh.rotation.x = -angleX;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PROJECTILES — fire from one side to another on capture
+// ═══════════════════════════════════════════════════════════
+export function fireProjectile(isWhiteCaptured) {
+  if (!_scene || !_THREE) return;
+  const T = _THREE;
+
+  // If white is captured, black fires at white. So start at black side (z ~ 12), target white side (z ~ -12)
+  const startZ = isWhiteCaptured ? 12 : -12;
+  const endZ = isWhiteCaptured ? -12 : 12;
+
+  const isFireball = Math.random() > 0.5;
+  const count = isFireball ? Math.floor(Math.random() * 3) + 1 : Math.floor(Math.random() * 10) + 5;
+
+  for (let i = 0; i < count; i++) {
+    const startX = (Math.random() - 0.5) * 16;
+    const endX = (Math.random() - 0.5) * 16;
+    
+    let mesh;
+    if (isFireball) {
+      mesh = new T.Mesh(
+        new T.SphereGeometry(0.3 + Math.random() * 0.2, 8, 8),
+        new T.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 2 })
+      );
+    } else {
+      // Arrow
+      mesh = new T.Group();
+      const shaft = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1, 4), new T.MeshStandardMaterial({ color: 0x332211 }));
+      shaft.rotation.x = Math.PI / 2;
+      mesh.add(shaft);
+      const head = new T.Mesh(new T.ConeGeometry(0.06, 0.2, 4), new T.MeshStandardMaterial({ color: 0x888888 }));
+      head.position.z = 0.5;
+      head.rotation.x = Math.PI / 2;
+      mesh.add(head);
+    }
+
+    mesh.position.set(startX, 4, startZ);
+    _scene.add(mesh);
+
+    projectiles.push({
+      mesh,
+      startX, startZ,
+      endX, endZ,
+      progress: -Math.random() * 0.2, // Staggered start
+      speed: 0.5 + Math.random() * 0.5,
+      height: 4 + Math.random() * 6,
+      isFireball
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initEnvironment, updateEnvironment, patchSkyForWar } from './environment.js';
+import { initEnvironment, updateEnvironment, patchSkyForWar, fireProjectile } from './environment.js';
 import { createSplashScreen } from './splash.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -112,12 +112,12 @@ controls.target.set(0, 0, 0);
 
 // ============ LIGHTING (enhanced multi-light GI approximation) ============
 // Hemisphere light — moody sky top, warm dirt ground bounce
-const hemiLight = new THREE.HemisphereLight(0x4a5a6a, 0x3a2a1a, 0.7);
+const hemiLight = new THREE.HemisphereLight(0x3a4a6a, 0x4a1a1a, 0.6);
 hemiLight.name = 'hemiLight';
 scene.add(hemiLight);
 
 // Subtle warm ambient fill to prevent pure-black shadows
-const ambientLight = new THREE.AmbientLight(0xffe8d0, 0.15);
+const ambientLight = new THREE.AmbientLight(0x404050, 0.2);
 ambientLight.name = 'ambientLight';
 scene.add(ambientLight);
 
@@ -1986,7 +1986,14 @@ function createPieceAt(piece, row, col) {
   group.position.set(col - 3.5, 0.05, row - 3.5);
   group.userData = { piece, row, col, isWhite, type, idleOffset: Math.random() * Math.PI * 2, bounceSpeed: 0.8 + Math.random() * 0.4 };
   if (isWhite) group.rotation.y = Math.PI;
-  group.castShadow = true;
+  
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
   scene.add(group);
   pieceObjects[key] = group;
   return group;
@@ -2073,6 +2080,7 @@ function executeVisualMove(move) {
         if (capIsWhite) capturedBlack.push(capPiece);
         else capturedWhite.push(capPiece);
         animateCapture(cap);
+        fireProjectile(capIsWhite);
         delete pieceObjects[epKey];
         // Send to prison after short delay
         setTimeout(() => addToPrison(capPiece, capIsWhite), 450);
@@ -2085,6 +2093,7 @@ function executeVisualMove(move) {
         if (capIsWhite) capturedBlack.push(capPiece);
         else capturedWhite.push(capPiece);
         animateCapture(cap);
+        fireProjectile(capIsWhite);
         delete pieceObjects[toKey];
         setTimeout(() => addToPrison(capPiece, capIsWhite), 450);
       }
@@ -2821,11 +2830,14 @@ function animate() {
   Object.values(pieceObjects).forEach(obj => {
     const ud = obj.userData;
     const breathe = Math.sin(time * ud.bounceSpeed + ud.idleOffset) * 0.015;
+    const rockZ = Math.cos(time * (ud.bounceSpeed * 0.5) + ud.idleOffset) * 0.02;
+    const rockX = Math.sin(time * (ud.bounceSpeed * 0.3) + ud.idleOffset) * 0.01;
     const baseY = 0.05;
     if (!animations.some(a => a.target === obj)) {
       obj.position.y = baseY + breathe;
+      obj.rotation.z = rockZ;
+      obj.rotation.x = rockX;
     }
-    obj.rotation.z = Math.sin(time * 0.5 + ud.idleOffset) * 0.03;
 
     // Eye tracking
     obj.children.forEach(child => {
