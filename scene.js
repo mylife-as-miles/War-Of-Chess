@@ -10,8 +10,8 @@ import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass.js';
 
 // ============ SCENE SETUP ============
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x6CB4EE);
-scene.fog = new THREE.FogExp2(0x88CCF0, 0.008);
+scene.background = new THREE.Color(0x3a2a1a);
+scene.fog = new THREE.FogExp2(0x887766, 0.012);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0, 14, 14);
@@ -108,18 +108,18 @@ controls.maxDistance = 25;
 controls.target.set(0, 0, 0);
 
 // ============ LIGHTING (enhanced multi-light GI approximation) ============
-// Hemisphere light — sky blue top, warm green-brown ground bounce
-const hemiLight = new THREE.HemisphereLight(0x9bc8f0, 0x557733, 0.9);
+// Hemisphere light — moody sky top, warm dirt ground bounce
+const hemiLight = new THREE.HemisphereLight(0x4a5a6a, 0x3a2a1a, 0.7);
 hemiLight.name = 'hemiLight';
 scene.add(hemiLight);
 
 // Subtle warm ambient fill to prevent pure-black shadows
-const ambientLight = new THREE.AmbientLight(0xfff8f0, 0.2);
+const ambientLight = new THREE.AmbientLight(0xffe8d0, 0.15);
 ambientLight.name = 'ambientLight';
 scene.add(ambientLight);
 
-// Main directional sunlight — warm golden sun, high-res VSM shadow map
-const sunLight = new THREE.DirectionalLight(0xfff4c2, 2.6);
+// Main directional sunlight — warm golden/orange sun, high-res VSM shadow map
+const sunLight = new THREE.DirectionalLight(0xffd8b0, 2.2);
 sunLight.name = 'sunLight';
 sunLight.position.set(8, 18, 8);
 sunLight.castShadow = true;
@@ -137,8 +137,8 @@ sunLight.shadow.radius = 3;       // VSM softness — wider penumbra
 scene.add(sunLight);
 scene.add(sunLight.target);
 
-// Secondary shadow-casting light from the opposite angle — adds depth
-const secLight = new THREE.DirectionalLight(0xc8d8ff, 0.6);
+// Secondary shadow-casting light from the opposite angle — adds depth (cooler from black kingdom side)
+const secLight = new THREE.DirectionalLight(0x8899bb, 0.8);
 secLight.name = 'secLight';
 secLight.position.set(-10, 12, -6);
 secLight.castShadow = true;
@@ -156,19 +156,19 @@ scene.add(secLight);
 scene.add(secLight.target);
 
 // Cool blue rim/back light — sky bounce from behind
-const rimLight = new THREE.DirectionalLight(0x88aadd, 0.55);
+const rimLight = new THREE.DirectionalLight(0x667799, 0.6);
 rimLight.name = 'rimLight';
 rimLight.position.set(-6, 10, -8);
 scene.add(rimLight);
 
 // Warm fill light from the side — reduces harsh shadow contrast
-const fillLight = new THREE.DirectionalLight(0xffe8cc, 0.4);
+const fillLight = new THREE.DirectionalLight(0xffaa66, 0.4);
 fillLight.name = 'fillLight';
 fillLight.position.set(-8, 5, 5);
 scene.add(fillLight);
 
 // Board-focused point light — warm overhead glow with cast shadows
-const pointLight = new THREE.PointLight(0xffaa44, 0.5, 28, 1.5);
+const pointLight = new THREE.PointLight(0xffaa44, 0.6, 28, 1.5);
 pointLight.name = 'pointLight';
 pointLight.position.set(0, 7, 0);
 pointLight.castShadow = true;
@@ -180,7 +180,7 @@ pointLight.shadow.radius = 5;     // Very soft point-light shadows
 scene.add(pointLight);
 
 // Subtle colored bounce light from below (ground bounce — GI approximation)
-const groundBounce = new THREE.PointLight(0x99cc77, 0.2, 18, 2.0);
+const groundBounce = new THREE.PointLight(0xaa5533, 0.3, 18, 2.0);
 groundBounce.name = 'groundBounce';
 groundBounce.position.set(0, -0.3, 0);
 scene.add(groundBounce);
@@ -2644,11 +2644,11 @@ const skyMat = new THREE.ShaderMaterial({
   uniforms: {
     uTime: { value: 0 },
     uSunDir: { value: new THREE.Vector3(0.4, 0.55, -0.3).normalize() },
-    uZenithColor: { value: new THREE.Color(0x2266aa) },
-    uHorizonColor: { value: new THREE.Color(0xffeedd) },
-    uGroundColor: { value: new THREE.Color(0x667744) },
-    uSunColor: { value: new THREE.Color(0xfff4cc) },
-    uSunGlowColor: { value: new THREE.Color(0xffcc88) },
+    uZenithColor: { value: new THREE.Color(0x1a2a3a) },
+    uHorizonColor: { value: new THREE.Color(0xddaa88) },
+    uGroundColor: { value: new THREE.Color(0x3a2a1a) },
+    uSunColor: { value: new THREE.Color(0xffddaa) },
+    uSunGlowColor: { value: new THREE.Color(0xffaa66) },
   },
   vertexShader: `
     varying vec3 vWorldDir;
@@ -2761,25 +2761,46 @@ for (let i = 0; i < 10; i++) {
 }
 
 // Ground with subtle procedural detail
+const environmentGroup = new THREE.Group();
+environmentGroup.name = 'environmentGroup';
+scene.add(environmentGroup);
+
+const whiteKingdomGroup = new THREE.Group();
+whiteKingdomGroup.name = 'whiteKingdomGroup';
+scene.add(whiteKingdomGroup);
+
+const blackKingdomGroup = new THREE.Group();
+blackKingdomGroup.name = 'blackKingdomGroup';
+scene.add(blackKingdomGroup);
+
+const warPropsGroup = new THREE.Group();
+warPropsGroup.name = 'warPropsGroup';
+scene.add(warPropsGroup);
+
+const atmosphereGroup = new THREE.Group();
+atmosphereGroup.name = 'atmosphereGroup';
+scene.add(atmosphereGroup);
+
+// Ground - stylized battlefield
 const groundMat = new THREE.MeshPhysicalMaterial({
-  color: 0x5aaf5a, roughness: 0.92, metalness: 0,
-  sheen: 0.08, sheenColor: new THREE.Color(0x88dd88), sheenRoughness: 0.8,
+  color: 0x3d352b, roughness: 0.95, metalness: 0,
+  sheen: 0.1, sheenColor: new THREE.Color(0x5a4d40), sheenRoughness: 0.8,
 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120, 32, 32), groundMat);
 ground.name = 'ground';
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.55;
 ground.receiveShadow = true;
-scene.add(ground);
+environmentGroup.add(ground);
 
-// Subtle ground vertex displacement for gentle rolling terrain
+// Subtle ground vertex displacement for rough terrain
 {
   const pos = ground.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i);
     const dist = Math.sqrt(x * x + y * y);
     if (dist > 8) { // outside the board area
-      const h = (Math.sin(x * 0.15) * Math.cos(y * 0.12) + Math.sin(x * 0.08 + y * 0.1) * 0.5) * 0.25;
+      const h = (Math.sin(x * 0.2) * Math.cos(y * 0.15) + Math.sin(x * 0.1 + y * 0.12) * 0.5) * 0.4;
       pos.setZ(i, h * Math.min(1, (dist - 8) / 10));
     }
   }
@@ -2787,183 +2808,170 @@ scene.add(ground);
   ground.geometry.computeVertexNormals();
 }
 
-// Rolling hills in the background
-for (let i = 0; i < 12; i++) {
-  const angle = (i / 12) * Math.PI * 2;
-  const dist = 35 + Math.random() * 15;
-  const hillSize = 4 + Math.random() * 8;
-  const hill = new THREE.Mesh(
-    new THREE.SphereGeometry(hillSize, 16, 16),
-    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.3 + Math.random() * 0.05, 0.4, 0.35 + Math.random() * 0.1), roughness: 0.95 })
-  );
-  hill.name = `hill_${i}`;
-  hill.position.set(Math.cos(angle) * dist, -hillSize * 0.65, Math.sin(angle) * dist);
-  hill.scale.y = 0.4 + Math.random() * 0.2;
-  scene.add(hill);
+// Board platform enhancements (stone trim around the board)
+const platformTrimMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.8, metalness: 0.1 });
+const platformTrim = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.4, 10.2), platformTrimMat);
+platformTrim.position.y = -0.65;
+platformTrim.receiveShadow = true;
+platformTrim.castShadow = true;
+environmentGroup.add(platformTrim);
+
+// White Kingdom (Noble, ivory stone, gold trim, blue banners)
+// Positioned behind the white pieces (z < 0)
+const whiteStoneMat = new THREE.MeshStandardMaterial({ color: 0xe8ddd0, roughness: 0.7 });
+const goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
+const blueBannerMat = new THREE.MeshStandardMaterial({ color: 0x2244aa, roughness: 0.9, side: THREE.DoubleSide });
+
+// White Fortress
+const whiteFortress = new THREE.Group();
+whiteFortress.position.set(0, 0, -18);
+whiteKingdomGroup.add(whiteFortress);
+
+// Main tower
+const wTower = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.5, 8, 8), whiteStoneMat);
+wTower.position.y = 3.5;
+wTower.castShadow = true;
+wTower.receiveShadow = true;
+whiteFortress.add(wTower);
+
+// Tower crown
+const wCrown = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 1, 8), whiteStoneMat);
+wCrown.position.y = 8;
+wCrown.castShadow = true;
+whiteFortress.add(wCrown);
+
+// Walls
+const wWallGeo = new THREE.BoxGeometry(12, 5, 2);
+const wWall1 = new THREE.Mesh(wWallGeo, whiteStoneMat);
+wWall1.position.set(-7.5, 2, 0);
+wWall1.castShadow = true;
+whiteFortress.add(wWall1);
+
+const wWall2 = new THREE.Mesh(wWallGeo, whiteStoneMat);
+wWall2.position.set(7.5, 2, 0);
+wWall2.castShadow = true;
+whiteFortress.add(wWall2);
+
+// Black Kingdom (Dark, obsidian/iron stone, crimson/purple banners)
+// Positioned behind the black pieces (z > 0)
+const blackStoneMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.2 });
+const ironTrimMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5, metalness: 0.9 });
+const redBannerMat = new THREE.MeshStandardMaterial({ color: 0xaa2222, roughness: 0.9, side: THREE.DoubleSide });
+
+// Black Fortress
+const blackFortress = new THREE.Group();
+blackFortress.position.set(0, 0, 18);
+blackKingdomGroup.add(blackFortress);
+
+// Main tower (spikier)
+const bTower = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 4, 9, 6), blackStoneMat);
+bTower.position.y = 4;
+bTower.castShadow = true;
+bTower.receiveShadow = true;
+blackFortress.add(bTower);
+
+// Tower spikes
+const bSpikeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6, metalness: 0.5 });
+for(let i=0; i<6; i++) {
+  const angle = (i/6) * Math.PI * 2;
+  const spike = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 4), bSpikeMat);
+  spike.position.set(Math.cos(angle)*2.8, 9.5, Math.sin(angle)*2.8);
+  blackFortress.add(spike);
 }
 
-// Grass tufts
-const grassColors = [0x4a9e4a, 0x5cb85c, 0x6fcf6f, 0x3d8b3d];
-for (let i = 0; i < 80; i++) {
+// Walls
+const bWallGeo = new THREE.BoxGeometry(12, 6, 2);
+const bWall1 = new THREE.Mesh(bWallGeo, blackStoneMat);
+bWall1.position.set(-7.5, 2.5, 0);
+bWall1.castShadow = true;
+blackFortress.add(bWall1);
+
+const bWall2 = new THREE.Mesh(bWallGeo, blackStoneMat);
+bWall2.position.set(7.5, 2.5, 0);
+bWall2.castShadow = true;
+blackFortress.add(bWall2);
+
+// War Props
+// Braziers around the board
+const brazierGeo = new THREE.CylinderGeometry(0.4, 0.2, 0.8, 6);
+const brazierMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.7, metalness: 0.8 });
+const fireMat = new THREE.MeshPhysicalMaterial({ color: 0xff6622, emissive: 0xff4400, emissiveIntensity: 2.0, transparent: true, opacity: 0.9 });
+
+const brazierPositions = [
+  [-6, -6], [6, -6], [-6, 6], [6, 6],
+  [-8, 0], [8, 0]
+];
+
+brazierPositions.forEach(pos => {
+  const brazierGroup = new THREE.Group();
+  brazierGroup.position.set(pos[0], -0.15, pos[1]);
+  
+  const brazier = new THREE.Mesh(brazierGeo, brazierMat);
+  brazier.castShadow = true;
+  brazierGroup.add(brazier);
+  
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 6), fireMat);
+  flame.name = 'flame';
+  flame.position.y = 0.6;
+  brazierGroup.add(flame);
+  
+  const bLight = new THREE.PointLight(0xff6633, 0.8, 8);
+  bLight.name = 'torchLight';
+  bLight.position.y = 0.6;
+  brazierGroup.add(bLight);
+  
+  warPropsGroup.add(brazierGroup);
+});
+
+// Banners
+for(let i=0; i<4; i++) {
+  const isWhite = i < 2;
+  const x = (i%2 === 0 ? -1 : 1) * 4;
+  const z = isWhite ? -8 : 8;
+  
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4, 8), new THREE.MeshStandardMaterial({color: 0x443322}));
+  pole.position.set(x, 1.5, z);
+  pole.castShadow = true;
+  warPropsGroup.add(pole);
+  
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.5), isWhite ? blueBannerMat : redBannerMat);
+  banner.name = 'banner';
+  banner.position.set(x + 0.6, 2, z);
+  banner.castShadow = true;
+  banner.userData.phaseOffset = Math.random() * Math.PI * 2;
+  warPropsGroup.add(banner);
+}
+
+// Weapons / Shields scattered
+const shieldGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 12);
+for(let i=0; i<12; i++) {
   const angle = Math.random() * Math.PI * 2;
-  const dist = 6 + Math.random() * 20;
-  const grassBlade = new THREE.Mesh(
-    new THREE.ConeGeometry(0.04 + Math.random() * 0.06, 0.15 + Math.random() * 0.25, 4),
-    new THREE.MeshStandardMaterial({ color: grassColors[Math.floor(Math.random() * grassColors.length)], roughness: 0.9 })
-  );
-  grassBlade.name = `grass_${i}`;
-  grassBlade.position.set(Math.cos(angle) * dist, -0.48, Math.sin(angle) * dist);
-  grassBlade.rotation.set(Math.random() * 0.2, Math.random() * Math.PI * 2, Math.random() * 0.2);
-  scene.add(grassBlade);
+  const dist = 7 + Math.random() * 5;
+  const isWhite = Math.sin(angle) < 0; // z < 0
+  
+  const shield = new THREE.Mesh(shieldGeo, isWhite ? goldTrimMat : ironTrimMat);
+  shield.position.set(Math.cos(angle)*dist, -0.4, Math.sin(angle)*dist);
+  shield.rotation.set(Math.random(), Math.random(), Math.random());
+  shield.castShadow = true;
+  warPropsGroup.add(shield);
 }
 
-// Trees
-for (let i = 0; i < 10; i++) {
-  const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
-  const dist = 14 + Math.random() * 12;
-  const tree = new THREE.Group();
-  tree.name = `tree_${i}`;
-
-  const trunkH = 1.2 + Math.random() * 1.0;
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.2, trunkH, 6),
-    new THREE.MeshStandardMaterial({ color: 0x8B5E3C, roughness: 0.8 })
-  );
-  trunk.position.y = trunkH / 2 - 0.55;
-  trunk.castShadow = true;
-  tree.add(trunk);
-
-  const foliageColor = [0x2d8a2d, 0x3ca03c, 0x228B22, 0x4CAF50][Math.floor(Math.random() * 4)];
-  for (let f = 0; f < 4; f++) {
-    const fSize = (1.0 + Math.random() * 0.5) - f * 0.15;
-    const foliage = new THREE.Mesh(
-      new THREE.SphereGeometry(fSize, 8, 8),
-      new THREE.MeshStandardMaterial({ color: foliageColor, roughness: 0.85 })
-    );
-    foliage.position.set(Math.random() * 0.3 - 0.15, trunkH - 0.3 + f * 0.4, Math.random() * 0.3 - 0.15);
-    foliage.castShadow = true;
-    tree.add(foliage);
-  }
-
-  tree.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-  scene.add(tree);
-}
-
-// Flowers
-const flowerColors = [0xff6699, 0xffcc33, 0xff4444, 0xbb66ff, 0x66bbff, 0xff8855];
-for (let i = 0; i < 50; i++) {
+// Atmosphere (Smoke / Dust)
+const smokeMat = new THREE.MeshPhysicalMaterial({
+  color: 0x888888, roughness: 1.0, transparent: true, opacity: 0.3, depthWrite: false
+});
+for(let i=0; i<15; i++) {
+  const smoke = new THREE.Mesh(new THREE.SphereGeometry(1.5 + Math.random(), 8, 8), smokeMat);
+  smoke.name = 'smoke';
   const angle = Math.random() * Math.PI * 2;
-  const dist = 5.5 + Math.random() * 18;
-  const flower = new THREE.Group();
-  flower.name = `flower_${i}`;
-
-  const stemH = 0.2 + Math.random() * 0.15;
-  const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.01, 0.015, stemH, 4),
-    new THREE.MeshStandardMaterial({ color: 0x3d8b3d, roughness: 0.8 })
-  );
-  stem.position.y = -0.55 + stemH / 2;
-  flower.add(stem);
-
-  const petalColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
-  // Flower head with multiple petals
-  const center = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5 })
-  );
-  center.position.y = -0.55 + stemH;
-  flower.add(center);
-
-  for (let p = 0; p < 5; p++) {
-    const pAngle = (p / 5) * Math.PI * 2;
-    const petal = new THREE.Mesh(
-      new THREE.SphereGeometry(0.025, 6, 6),
-      new THREE.MeshStandardMaterial({ color: petalColor, roughness: 0.5 })
-    );
-    petal.position.set(Math.cos(pAngle) * 0.03, -0.55 + stemH, Math.sin(pAngle) * 0.03);
-    petal.scale.y = 0.5;
-    flower.add(petal);
-  }
-
-  flower.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-  flower.userData.swayOffset = Math.random() * Math.PI * 2;
-  scene.add(flower);
-}
-
-// Butterflies
-for (let i = 0; i < 6; i++) {
-  const butterfly = new THREE.Group();
-  butterfly.name = `butterfly_${i}`;
-  const bColor = [0xff88aa, 0xffcc44, 0x88ccff, 0xaa88ff, 0xff8844, 0x88ffaa][i];
-  [-1, 1].forEach((side, idx) => {
-    const wing = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.1, 0.07),
-      new THREE.MeshStandardMaterial({ color: bColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
-    );
-    wing.name = `wing_${idx}`;
-    wing.position.set(side * 0.05, 0, 0);
-    butterfly.add(wing);
-  });
-  // Tiny body
-  const bBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.04, 4, 4), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-  bBody.name = 'bBody';
-  butterfly.add(bBody);
-
-  butterfly.position.set(-8 + Math.random() * 16, 1.5 + Math.random() * 3, -8 + Math.random() * 16);
-  butterfly.userData = { phase: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 0.5, radius: 2 + Math.random() * 3, centerX: butterfly.position.x, centerZ: butterfly.position.z };
-  scene.add(butterfly);
-}
-
-// Mushrooms near board
-for (let i = 0; i < 6; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 5.5 + Math.random() * 2;
-  const shroom = new THREE.Group();
-  shroom.name = `mushroom_${i}`;
-
-  const stipe = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.03, 0.04, 0.12, 6),
-    new THREE.MeshStandardMaterial({ color: 0xf5f0e0, roughness: 0.6 })
-  );
-  stipe.position.y = -0.49;
-  shroom.add(stipe);
-
-  const capColor = [0xff4444, 0xff8833, 0xcc44ff][i % 3];
-  const cap = new THREE.Mesh(
-    new THREE.SphereGeometry(0.06, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: capColor, roughness: 0.5 })
-  );
-  cap.position.y = -0.43;
-  shroom.add(cap);
-
-  // Dots on cap
-  for (let d = 0; d < 3; d++) {
-    const dot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.01, 4, 4),
-      new THREE.MeshStandardMaterial({ color: 0xffffff })
-    );
-    const dAngle = (d / 3) * Math.PI * 2 + Math.random();
-    dot.position.set(Math.cos(dAngle) * 0.035, -0.41, Math.sin(dAngle) * 0.035);
-    shroom.add(dot);
-  }
-
-  shroom.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-  scene.add(shroom);
-}
-
-// Small rocks
-for (let i = 0; i < 15; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 6 + Math.random() * 15;
-  const rock = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(0.08 + Math.random() * 0.12, 0),
-    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0, 0, 0.4 + Math.random() * 0.2), roughness: 0.9 })
-  );
-  rock.name = `rock_${i}`;
-  rock.position.set(Math.cos(angle) * dist, -0.52, Math.sin(angle) * dist);
-  rock.rotation.set(Math.random(), Math.random(), Math.random());
-  rock.scale.y = 0.6;
-  scene.add(rock);
+  const dist = 10 + Math.random() * 15;
+  smoke.position.set(Math.cos(angle)*dist, Math.random()*2, Math.sin(angle)*dist);
+  smoke.userData = {
+    speed: 0.2 + Math.random()*0.3,
+    phase: Math.random() * Math.PI * 2,
+    baseY: smoke.position.y
+  };
+  atmosphereGroup.add(smoke);
 }
 
 // ============ CAMERA SHAKE ============
@@ -3093,36 +3101,36 @@ function animate() {
   pointLight.color.setHSL(hue, 0.2, 0.65);
   pointLight.intensity = 0.35 + Math.sin(time * 0.5) * 0.05;
 
-  // Flowers sway
-  scene.children.forEach(child => {
-    if (child.name?.startsWith('flower_') && child.userData.swayOffset !== undefined) {
-      child.rotation.z = Math.sin(time * 1.5 + child.userData.swayOffset) * 0.1;
+  // Banners sway
+  warPropsGroup.children.forEach(child => {
+    if (child.name === 'banner') {
+      child.rotation.y = Math.sin(time * 1.5 + child.userData.phaseOffset) * 0.15;
+      child.rotation.z = Math.sin(time * 2.0 + child.userData.phaseOffset) * 0.05;
     }
   });
 
-  // Butterflies
-  scene.children.forEach(child => {
-    if (child.name?.startsWith('butterfly_')) {
+  // Smoke drift
+  atmosphereGroup.children.forEach(child => {
+    if (child.name === 'smoke') {
       const ud = child.userData;
-      const phase = ud.phase + time * ud.speed;
-      child.position.x = ud.centerX + Math.sin(phase) * ud.radius;
-      child.position.z = ud.centerZ + Math.cos(phase * 0.7) * ud.radius;
-      child.position.y = 1.5 + Math.sin(phase * 2) * 0.5;
-      child.rotation.y = Math.atan2(Math.cos(phase), -Math.sin(phase * 0.7));
-      child.children.forEach((wing, idx) => {
-        if (wing.name?.startsWith('wing_')) {
-          const flapAngle = Math.sin(time * 12 + ud.phase) * 0.6;
-          wing.rotation.y = idx === 0 ? flapAngle : -flapAngle;
-        }
-      });
+      child.position.y = ud.baseY + Math.sin(time * ud.speed + ud.phase) * 1.5;
+      child.position.x += Math.sin(time * ud.speed * 0.5) * 0.01;
+      child.scale.setScalar(1.0 + Math.sin(time * ud.speed + ud.phase) * 0.2);
     }
   });
 
-  // Grass sway
-  scene.children.forEach(child => {
-    if (child.name?.startsWith('grass_')) {
-      child.rotation.z = Math.sin(time * 1.2 + child.position.x * 0.5) * 0.12;
-    }
+  // Brazier torch flicker
+  warPropsGroup.children.forEach(child => {
+    child.children.forEach(c => {
+      if (c.name === 'flame') {
+        c.scale.y = 0.9 + Math.sin(time * 8 + child.position.x * 3) * 0.2;
+        c.scale.x = 0.95 + Math.sin(time * 6.5) * 0.1;
+        c.position.x = Math.sin(time * 5) * 0.008;
+      }
+      if (c.name === 'torchLight') {
+        c.intensity = 0.8 + Math.sin(time * 7 + Math.random() * 0.3) * 0.25;
+      }
+    });
   });
 
   // Prison torch flicker
