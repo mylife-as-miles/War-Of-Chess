@@ -14,6 +14,7 @@ const embers = [];
 const smokeParticles = [];
 const brazierLights = [];
 const bannerMeshes = [];
+const dustParticles = [];
 
 export function initEnvironment(scene, THREE_ref) {
   _scene = scene;
@@ -42,6 +43,8 @@ export function initEnvironment(scene, THREE_ref) {
   const stoneMat     = new T.MeshStandardMaterial({ color: 0x9e9e8e, roughness: 0.88, metalness: 0.05 });
   const ivoryStoneMat= new T.MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.82, metalness: 0.0  });
   const darkStoneMat = new T.MeshStandardMaterial({ color: 0x2c2c3a, roughness: 0.80, metalness: 0.1  });
+  const distantIvoryStoneMat = new T.MeshStandardMaterial({ color: 0xb8b09c, roughness: 0.85, metalness: 0.0 });
+  const distantDarkStoneMat = new T.MeshStandardMaterial({ color: 0x1c1c2a, roughness: 0.85, metalness: 0.1 });
   const ironMat      = new T.MeshStandardMaterial({ color: 0x4a4a55, roughness: 0.35, metalness: 0.75 });
   const goldMat      = new T.MeshStandardMaterial({ color: 0xd4a020, roughness: 0.22, metalness: 0.9, emissive: new T.Color(0x6a4000), emissiveIntensity: 0.15 });
   const woodMat      = new T.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85, metalness: 0.0  });
@@ -68,14 +71,30 @@ export function initEnvironment(scene, THREE_ref) {
       const x = pos.getX(i), y = pos.getY(i);
       const dist = Math.sqrt(x*x + y*y);
       if (dist > 8) {
-        const h = (Math.sin(x*0.13)*Math.cos(y*0.11) + Math.sin(x*0.07+y*0.09)*0.4) * 0.35;
-        pos.setZ(i, h * Math.min(1,(dist-8)/12));
+        // Create trenches and jagged ridges
+        const noise1 = Math.sin(x*0.3)*Math.cos(y*0.28);
+        const noise2 = Math.sin(x*0.15 + y*0.11);
+        const jagged = Math.abs(noise1) * 1.5 - Math.abs(noise2) * 1.0;
+        const h = jagged * 0.8;
+        pos.setZ(i, h * Math.min(1,(dist-8)/15));
       }
     }
     pos.needsUpdate = true;
     warGround.geometry.computeVertexNormals();
   }
   environmentGroup.add(warGround);
+
+  // Add jagged rocks around the battlefield
+  const rockGeo = new T.DodecahedronGeometry(1, 1);
+  for(let i=0; i<40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 12 + Math.random() * 35;
+    const rock = new T.Mesh(rockGeo, darkStoneMat);
+    rock.position.set(Math.cos(angle)*r, -0.5 + Math.random()*1.5, Math.sin(angle)*r);
+    rock.scale.set(1 + Math.random()*2, 2 + Math.random()*3, 1 + Math.random()*2);
+    rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+    environmentGroup.add(rock);
+  }
 
   // Arena border stones — ring of low stone blocks framing the battlefield
   const borderStoneMat = new T.MeshStandardMaterial({ color: 0x6e6455, roughness: 0.92, metalness: 0.0 });
@@ -179,7 +198,7 @@ export function initEnvironment(scene, THREE_ref) {
   // ═══════════════════════════════════════════════════════════
   //  HELPER: FORTRESS WALL SEGMENT
   // ═══════════════════════════════════════════════════════════
-  function makeWallSegment(x, z, rotY, w, mat, group, nameSuffix) {
+  function makeWallSegment(x, z, rotY, w, mat, group, nameSuffix, isDark = false) {
     const g = new T.Group(); g.name = `wallSeg_${nameSuffix}`;
     const wall = box(w, 2.2, 0.6, mat); wall.name = 'wallBody';
     wall.position.y = 0.65; g.add(wall);
@@ -190,6 +209,19 @@ export function initEnvironment(scene, THREE_ref) {
       merlon.position.set(-w/2 + 0.55 + i*(w/(merlonCount-0.5||1)), 1.98, 0);
       g.add(merlon);
     }
+    
+    if (isDark) {
+      // Glowing runes
+      const runeMat = new T.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff0000, emissiveIntensity: 2.0, transparent: true, opacity: 0.8, depthWrite: false });
+      for (let i = 0; i < 3; i++) {
+        if (Math.random() > 0.5) {
+          const rune = new T.Mesh(new T.PlaneGeometry(0.2, 0.5), runeMat);
+          rune.position.set(-w/3 + i*(w/3) + (Math.random()-0.5)*0.5, 0.8 + Math.random()*0.4, 0.31); 
+          g.add(rune);
+        }
+      }
+    }
+    
     g.position.set(x, 0, z);
     g.rotation.y = rotY;
     group.add(g);
@@ -199,7 +231,7 @@ export function initEnvironment(scene, THREE_ref) {
   // ═══════════════════════════════════════════════════════════
   //  HELPER: TOWER
   // ═══════════════════════════════════════════════════════════
-  function makeTower(x, z, mat, roofColor, group, nameSuffix, height=4) {
+  function makeTower(x, z, mat, roofColor, group, nameSuffix, height=4, isDark=false) {
     const g = new T.Group(); g.name = `tower_${nameSuffix}`;
     const base = cyl(0.7, 0.85, height, 8, mat); base.name = 'towerBase';
     base.position.y = height/2 - 0.5; g.add(base);
@@ -216,7 +248,9 @@ export function initEnvironment(scene, THREE_ref) {
     // Window slits
     for (let i = 0; i < 3; i++) {
       const wAngle = (i/3)*Math.PI*2;
-      const slit = box(0.1, 0.35, 0.12, new T.MeshStandardMaterial({ color: 0x000000, emissive: new T.Color(0x220011), emissiveIntensity: 0.5 }));
+      const slitColor = isDark ? 0xff0000 : 0x220011;
+      const slitIntensity = isDark ? 3.0 : 0.5;
+      const slit = box(0.1, 0.35, 0.12, new T.MeshStandardMaterial({ color: 0x000000, emissive: new T.Color(slitColor), emissiveIntensity: slitIntensity }));
       slit.name = `slit_${i}`;
       slit.position.set(Math.cos(wAngle)*0.72, height*0.45, Math.sin(wAngle)*0.72);
       slit.rotation.y = wAngle; g.add(slit);
@@ -274,12 +308,34 @@ export function initEnvironment(scene, THREE_ref) {
     // 3 shields on the rack
     const shieldColors = isNoble ? [0x1a4fa3, 0xe8e0cc, 0xd4a020] : [0x8b0000, 0x2c2c3a, 0x6a006a];
     for (let i = 0; i < 3; i++) {
-      const sh = box(0.38, 0.5, 0.06, new T.MeshStandardMaterial({ color: shieldColors[i], roughness: 0.6 }));
+      const shMat = new T.MeshStandardMaterial({ color: shieldColors[i], roughness: 0.6 });
+      let sh;
+      // Varied shield designs: some rectangular, some round, some hexagonal
+      const randShape = Math.random();
+      if (randShape > 0.66) {
+        sh = box(0.38, 0.5, 0.06, shMat); // Rectangular
+      } else if (randShape > 0.33) {
+        sh = cyl(0.25, 0.25, 0.06, 12, shMat); // Round
+        sh.rotation.x = Math.PI/2;
+      } else {
+        sh = cyl(0.25, 0.25, 0.06, 6, shMat); // Hexagonal
+        sh.rotation.x = Math.PI/2;
+      }
+      
       sh.name = `shield_${i}`;
       sh.position.set(-0.55 + i*0.55, 0.6, 0.12);
       // Boss in center
       const boss = new T.Mesh(new T.SphereGeometry(0.07,6,6), ironMat); boss.name = `boss_${i}`;
       boss.position.set(-0.55+i*0.55, 0.6, 0.19); g.add(sh); g.add(boss);
+      
+      // Add a subtle emblem to some shields
+      if (Math.random() > 0.5) {
+        const emblemMat = new T.MeshStandardMaterial({ color: isNoble ? 0xd4a020 : 0xff2200, roughness: 0.4, metalness: 0.8 });
+        const emblem = box(0.05, 0.3, 0.02, emblemMat);
+        emblem.position.set(-0.55+i*0.55, 0.6, 0.16);
+        emblem.rotation.z = Math.random() * Math.PI;
+        g.add(emblem);
+      }
     }
     g.position.set(x, 0, z); g.rotation.y = rotY; group.add(g); return g;
   }
@@ -335,6 +391,67 @@ export function initEnvironment(scene, THREE_ref) {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  HELPER: WALL BANNER
+  // ═══════════════════════════════════════════════════════════
+  function makeWallBanner(x, y, z, color, group) {
+    const banner = box(0.8, 2.0, 0.05, new T.MeshStandardMaterial({ color: color, roughness: 0.8 }));
+    banner.position.set(x, y, z);
+    group.add(banner);
+    bannerMeshes.push({ mesh: banner, offset: Math.random()*Math.PI*2 });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: SIEGE ENGINE (CATAPULT)
+  // ═══════════════════════════════════════════════════════════
+  function makeCatapult(x, z, rotY, group) {
+    const g = new T.Group();
+    const base = box(1.5, 0.2, 2.5, woodMat); base.position.y = 0.3; g.add(base);
+    for(let wx of [-0.85, 0.85]) {
+      for(let wz of [-1.0, 1.0]) {
+        const wheel = cyl(0.4, 0.4, 0.1, 8, woodMat);
+        wheel.rotation.z = Math.PI/2;
+        wheel.position.set(wx, 0.4, wz);
+        g.add(wheel);
+      }
+    }
+    const arm = box(0.2, 2.5, 0.2, woodMat);
+    arm.position.set(0, 1.5, 0.5);
+    arm.rotation.x = -Math.PI/4;
+    g.add(arm);
+    const bucket = box(0.6, 0.4, 0.6, woodMat);
+    bucket.position.set(0, 2.4, -0.4);
+    bucket.rotation.x = -Math.PI/4;
+    g.add(bucket);
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY;
+    group.add(g);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: BROKEN CHARIOT
+  // ═══════════════════════════════════════════════════════════
+  function makeBrokenChariot(x, z, rotY, group) {
+    const g = new T.Group();
+    const body = box(1.2, 0.5, 1.5, woodMat);
+    body.position.set(0, 0.4, 0);
+    body.rotation.z = 0.2;
+    body.rotation.x = -0.3;
+    g.add(body);
+    const wheel1 = cyl(0.5, 0.5, 0.1, 8, woodMat);
+    wheel1.rotation.z = Math.PI/2 + 0.2;
+    wheel1.position.set(-0.7, 0.3, 0.2);
+    g.add(wheel1);
+    const wheel2 = cyl(0.5, 0.5, 0.1, 8, woodMat);
+    wheel2.rotation.z = Math.PI/2 - 0.5;
+    wheel2.rotation.x = Math.PI/2;
+    wheel2.position.set(1.0, 0.05, 0.5);
+    g.add(wheel2);
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY;
+    group.add(g);
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  WHITE KINGDOM  (z < 0 side — noble, ivory, gold, blue)
   //  White pieces start at rows 0-1 in chess → z = -3.5..-4.5
   //  Noble fortress staged at z = -10 .. -22
@@ -358,14 +475,18 @@ export function initEnvironment(scene, THREE_ref) {
   makeTower( 7.8, -10, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wInner_R', 4.5);
 
   // Outer fortress wall (background) z = -17
-  makeWallSegment(-6, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_L');
-  makeWallSegment( 6, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_R');
-  makeWallSegment( 0, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_C');
+  makeWallSegment(-6, -17, 0, 5.5, distantIvoryStoneMat, whiteKingdomGroup, 'wOuter_L');
+  makeWallSegment( 6, -17, 0, 5.5, distantIvoryStoneMat, whiteKingdomGroup, 'wOuter_R');
+  makeWallSegment( 0, -17, 0, 5.5, distantIvoryStoneMat, whiteKingdomGroup, 'wOuter_C');
 
   // Outer towers z = -17
-  makeTower(-10, -17, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_L', 6);
-  makeTower( 10, -17, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_R', 6);
-  makeTower(  0, -22, ivoryStoneMat, 0xd4a020, whiteKingdomGroup, 'wOuter_C', 8); // central keep
+  makeTower(-10, -17, distantIvoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_L', 6);
+  makeTower( 10, -17, distantIvoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_R', 6);
+  makeTower(  0, -22, distantIvoryStoneMat, 0xd4a020, whiteKingdomGroup, 'wOuter_C', 8); // central keep
+
+  // Wall banners
+  makeWallBanner(-3, 1.5, -16.65, 0x1a4fa3, whiteKingdomGroup);
+  makeWallBanner( 3, 1.5, -16.65, 0x1a4fa3, whiteKingdomGroup);
 
   // Noble banner poles flanking board
   makeBannerPole(-7.2, -8, 0x1a4fa3, 0xd4a020, whiteKingdomGroup, 'wL1');
@@ -418,22 +539,26 @@ export function initEnvironment(scene, THREE_ref) {
   blackKingdomGroup.add(darkGround);
 
   // Inner dark fortress wall z = +10
-  makeWallSegment(-5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_L');
-  makeWallSegment( 5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_R');
-  makeWallSegment( 0,  10, 0, 4.0, darkStoneMat, blackKingdomGroup, 'bInner_C');
+  makeWallSegment(-5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_L', true);
+  makeWallSegment( 5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_R', true);
+  makeWallSegment( 0,  10, 0, 4.0, darkStoneMat, blackKingdomGroup, 'bInner_C', true);
 
   // Inner dark towers z = +10
-  makeTower(-7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_L', 4.5);
-  makeTower( 7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_R', 4.5);
+  makeTower(-7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_L', 4.5, true);
+  makeTower( 7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_R', 4.5, true);
 
   // Outer dark fortress z = +17
-  makeWallSegment(-6,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_L');
-  makeWallSegment( 6,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_R');
-  makeWallSegment( 0,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_C');
+  makeWallSegment(-6,  17, 0, 5.5, distantDarkStoneMat, blackKingdomGroup, 'bOuter_L', true);
+  makeWallSegment( 6,  17, 0, 5.5, distantDarkStoneMat, blackKingdomGroup, 'bOuter_R', true);
+  makeWallSegment( 0,  17, 0, 5.5, distantDarkStoneMat, blackKingdomGroup, 'bOuter_C', true);
 
-  makeTower(-10,  17, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_L', 6);
-  makeTower( 10,  17, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_R', 6);
-  makeTower(  0,  22, darkStoneMat, 0x3d0d5c, blackKingdomGroup, 'bOuter_C', 8); // dark keep
+  makeTower(-10,  17, distantDarkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_L', 6, true);
+  makeTower( 10,  17, distantDarkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_R', 6, true);
+  makeTower(  0,  22, distantDarkStoneMat, 0x3d0d5c, blackKingdomGroup, 'bOuter_C', 8, true); // dark keep
+
+  // Wall banners
+  makeWallBanner(-3, 1.5, 16.65, 0x8b0000, blackKingdomGroup);
+  makeWallBanner( 3, 1.5, 16.65, 0x8b0000, blackKingdomGroup);
 
   // Dark banner poles
   makeBannerPole(-7.2,  8, 0x8b0000, 0x3d0d5c, blackKingdomGroup, 'bL1');
@@ -499,6 +624,12 @@ export function initEnvironment(scene, THREE_ref) {
     warPropsGroup.add(rg);
   });
 
+  // Add siege engines and broken chariots
+  makeCatapult(-14, -6, Math.PI/6, warPropsGroup);
+  makeCatapult( 14,  6, -Math.PI/6 + Math.PI, warPropsGroup);
+  makeBrokenChariot(-12, 12, Math.PI/4, warPropsGroup);
+  makeBrokenChariot( 13, -10, -Math.PI/3, warPropsGroup);
+
   // ═══════════════════════════════════════════════════════════
   //  ATMOSPHERE — embers, distant haze mountains, skyline
   // ═══════════════════════════════════════════════════════════
@@ -526,7 +657,7 @@ export function initEnvironment(scene, THREE_ref) {
   });
 
   // Distant silhouette mountains (very low poly backdrop)
-  const mountMat = new T.MeshStandardMaterial({ color: 0x1a1520, roughness: 1.0 });
+  const mountMat = new T.MeshStandardMaterial({ color: 0x0a0810, roughness: 1.0 });
   const mountAngles = [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, Math.PI-0.3, Math.PI, Math.PI+0.3];
   mountAngles.forEach((a, mi) => {
     const dist = 48 + Math.random()*12;
@@ -538,6 +669,22 @@ export function initEnvironment(scene, THREE_ref) {
     mount.scale.y = 0.55 + Math.random()*0.3;
     atmosphereGroup.add(mount);
   });
+
+  // Wind-blown dust particles
+  const dustGeo = new T.PlaneGeometry(0.1, 0.1);
+  const dustMat = new T.MeshBasicMaterial({ color: 0xaa9988, transparent: true, opacity: 0.3, side: T.DoubleSide, depthWrite: false });
+  for (let i = 0; i < 150; i++) {
+    const dust = new T.Mesh(dustGeo, dustMat);
+    dust.position.set((Math.random()-0.5)*60, Math.random()*4, (Math.random()-0.5)*60);
+    dust.userData = {
+      speedX: (Math.random()-0.5)*0.05 + 0.02,
+      speedY: (Math.random()-0.5)*0.01,
+      speedZ: (Math.random()-0.5)*0.05,
+      phase: Math.random()*Math.PI*2
+    };
+    atmosphereGroup.add(dust);
+    dustParticles.push(dust);
+  }
 
   // Distant battle fire glow on horizons (emissive planes)
   const glowMat = new T.MeshStandardMaterial({ color: 0xff3300, emissive: new T.Color(0xff1100), emissiveIntensity: 1.2, transparent: true, opacity: 0.12, depthWrite: false, side: T.DoubleSide });
@@ -592,6 +739,21 @@ export function updateEnvironment(time) {
     puff.position.x += 0.001;
     puff.material.opacity = 0.1 + Math.sin(time * 0.3 + ud.phase) * 0.06;
     puff.rotation.y = time * 0.05 + ud.phase;
+  });
+
+  // Dust particles blowing in the wind
+  dustParticles.forEach(dust => {
+    dust.position.x += dust.userData.speedX;
+    dust.position.y += dust.userData.speedY + Math.sin(time*2 + dust.userData.phase)*0.005;
+    dust.position.z += dust.userData.speedZ;
+    if (dust.position.x > 30) dust.position.x -= 60;
+    if (dust.position.x < -30) dust.position.x += 60;
+    if (dust.position.z > 30) dust.position.z -= 60;
+    if (dust.position.z < -30) dust.position.z += 60;
+    if (dust.position.y > 3) dust.position.y -= 3;
+    if (dust.position.y < 0) dust.position.y += 3;
+    dust.rotation.y = time + dust.userData.phase;
+    dust.rotation.x = time*0.5 + dust.userData.phase;
   });
 }
 

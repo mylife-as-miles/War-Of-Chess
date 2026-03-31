@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { initEnvironment, updateEnvironment, patchSkyForWar } from './environment.js';
+import { createSplashScreen } from './splash.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -2946,3 +2947,15 @@ window.addEventListener('resize', () => {
 
 // ============ INIT ============
 initBoard();
+
+// Hide UI initially
+statusBar.style.display = 'none';
+controlsPanel.style.display = 'none';
+diffPanel.style.display = 'none';
+
+createSplashScreen(() => {
+  // Show UI when splash is done
+  statusBar.style.display = '';
+  controlsPanel.style.display = '';
+  diffPanel.style.display = '';
+});
