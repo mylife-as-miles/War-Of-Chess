@@ -1,0 +1,608 @@
+import * as THREE from 'three';
+
+// ============================================================
+//  BATTLEFIELD ENVIRONMENT  — fully additive, non-destructive
+//  All new content lives in isolated groups below.
+//  Import this module at the end of scene.js:
+//    import { initEnvironment, updateEnvironment } from './environment.js';
+//    initEnvironment(scene, THREE);   // call once after scene setup
+//    // inside animate(): updateEnvironment(time);
+// ============================================================
+
+let _scene, _THREE;
+const embers = [];
+const smokeParticles = [];
+const brazierLights = [];
+const bannerMeshes = [];
+
+export function initEnvironment(scene, THREE_ref) {
+  _scene = scene;
+  _THREE = THREE_ref;
+  const T = THREE_ref;
+
+  // ── Mood overrides ──────────────────────────────────────────
+  scene.background = new T.Color(0x1a1a2e);
+  scene.fog = new T.FogExp2(0x2a1a18, 0.012);
+
+  // ── Top-level groups ────────────────────────────────────────
+  const environmentGroup   = new T.Group(); environmentGroup.name   = 'environmentGroup';
+  const whiteKingdomGroup  = new T.Group(); whiteKingdomGroup.name  = 'whiteKingdomGroup';
+  const blackKingdomGroup  = new T.Group(); blackKingdomGroup.name  = 'blackKingdomGroup';
+  const warPropsGroup      = new T.Group(); warPropsGroup.name      = 'warPropsGroup';
+  const atmosphereGroup    = new T.Group(); atmosphereGroup.name    = 'atmosphereGroup';
+
+  scene.add(environmentGroup, whiteKingdomGroup, blackKingdomGroup, warPropsGroup, atmosphereGroup);
+
+  // ── Shared helpers ──────────────────────────────────────────
+  function box(w, h, d, mat)  { const m = new T.Mesh(new T.BoxGeometry(w,h,d), mat); m.castShadow = true; m.receiveShadow = true; return m; }
+  function cyl(rt, rb, h, s, mat) { const m = new T.Mesh(new T.CylinderGeometry(rt,rb,h,s), mat); m.castShadow = true; m.receiveShadow = true; return m; }
+  function cone(r, h, s, mat) { const m = new T.Mesh(new T.ConeGeometry(r,h,s), mat); m.castShadow = true; return m; }
+
+  // ── Shared materials ────────────────────────────────────────
+  const stoneMat     = new T.MeshStandardMaterial({ color: 0x9e9e8e, roughness: 0.88, metalness: 0.05 });
+  const ivoryStoneMat= new T.MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.82, metalness: 0.0  });
+  const darkStoneMat = new T.MeshStandardMaterial({ color: 0x2c2c3a, roughness: 0.80, metalness: 0.1  });
+  const ironMat      = new T.MeshStandardMaterial({ color: 0x4a4a55, roughness: 0.35, metalness: 0.75 });
+  const goldMat      = new T.MeshStandardMaterial({ color: 0xd4a020, roughness: 0.22, metalness: 0.9, emissive: new T.Color(0x6a4000), emissiveIntensity: 0.15 });
+  const woodMat      = new T.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85, metalness: 0.0  });
+  const blueBannerMat= new T.MeshStandardMaterial({ color: 0x1a4fa3, roughness: 0.7, metalness: 0.0, side: T.DoubleSide });
+  const goldBannerMat= new T.MeshStandardMaterial({ color: 0xd4a020, roughness: 0.6, metalness: 0.0, side: T.DoubleSide });
+  const crimsonMat   = new T.MeshStandardMaterial({ color: 0x8b0000, roughness: 0.7, metalness: 0.0, side: T.DoubleSide });
+  const darkPurpleMat= new T.MeshStandardMaterial({ color: 0x3d0d5c, roughness: 0.7, metalness: 0.0, side: T.DoubleSide });
+  const emberMat     = new T.MeshStandardMaterial({ color: 0xff5500, emissive: new T.Color(0xff2200), emissiveIntensity: 2.5, roughness: 0.5 });
+  const smokeMat     = new T.MeshStandardMaterial({ color: 0x555566, roughness: 1.0, transparent: true, opacity: 0.18, depthWrite: false });
+  const groundWarMat = new T.MeshStandardMaterial({ color: 0x4a3d28, roughness: 0.95, metalness: 0.0 });
+
+  // ═══════════════════════════════════════════════════════════
+  //  GROUND — replace the pastoral green with war-torn earth
+  // ═══════════════════════════════════════════════════════════
+  const warGround = new T.Mesh(new T.PlaneGeometry(140, 140, 40, 40), groundWarMat);
+  warGround.name = 'warGround';
+  warGround.rotation.x = -Math.PI / 2;
+  warGround.position.y = -0.56;
+  warGround.receiveShadow = true;
+  // Subtle terrain lumps outside board
+  {
+    const pos = warGround.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      const dist = Math.sqrt(x*x + y*y);
+      if (dist > 8) {
+        const h = (Math.sin(x*0.13)*Math.cos(y*0.11) + Math.sin(x*0.07+y*0.09)*0.4) * 0.35;
+        pos.setZ(i, h * Math.min(1,(dist-8)/12));
+      }
+    }
+    pos.needsUpdate = true;
+    warGround.geometry.computeVertexNormals();
+  }
+  environmentGroup.add(warGround);
+
+  // Arena border stones — ring of low stone blocks framing the battlefield
+  const borderStoneMat = new T.MeshStandardMaterial({ color: 0x6e6455, roughness: 0.92, metalness: 0.0 });
+  const borderCount = 28;
+  for (let i = 0; i < borderCount; i++) {
+    const angle = (i / borderCount) * Math.PI * 2;
+    const r = 8.6 + (i % 3 === 0 ? 0.15 : 0);
+    const bstone = box(0.55 + (i%2)*0.2, 0.18 + (i%3)*0.08, 0.55, borderStoneMat);
+    bstone.name = `borderStone_${i}`;
+    bstone.position.set(Math.cos(angle)*r, -0.46, Math.sin(angle)*r);
+    bstone.rotation.y = angle;
+    environmentGroup.add(bstone);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ARENA PLATFORM — raised sacred battlefield under the board
+  // ═══════════════════════════════════════════════════════════
+  const platformMat = new T.MeshStandardMaterial({ color: 0x7a6a4a, roughness: 0.75, metalness: 0.05 });
+  const platform = box(12, 0.22, 12, platformMat);
+  platform.name = 'arenaPlatform';
+  platform.position.set(0, -0.46, 0);
+  environmentGroup.add(platform);
+
+  // Platform edge trim — gold inlay strips
+  const trimGeoH = new T.BoxGeometry(12.1, 0.06, 0.12);
+  const trimGeoV = new T.BoxGeometry(0.12, 0.06, 12.1);
+  [-6, 6].forEach((z, i) => {
+    const t = new T.Mesh(trimGeoH, goldMat); t.name = `platformTrimH_${i}`;
+    t.position.set(0, -0.34, z); environmentGroup.add(t);
+  });
+  [-6, 6].forEach((x, i) => {
+    const t = new T.Mesh(trimGeoV, goldMat); t.name = `platformTrimV_${i}`;
+    t.position.set(x, -0.34, 0); environmentGroup.add(t);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: BANNER POLE
+  // ═══════════════════════════════════════════════════════════
+  function makeBannerPole(x, z, bannerColor, accentColor, group, nameSuffix) {
+    const g = new T.Group(); g.name = `bannerPole_${nameSuffix}`;
+    // Pole
+    const pole = cyl(0.04, 0.05, 4.5, 6, ironMat); pole.name = 'pole';
+    pole.position.y = 1.8; g.add(pole);
+    // Finial sphere
+    const finial = new T.Mesh(new T.SphereGeometry(0.1, 8, 8), goldMat); finial.name = 'finial';
+    finial.position.y = 4.15; g.add(finial);
+    // Banner cloth
+    const bannerMesh = box(0.9, 1.5, 0.04, new T.MeshStandardMaterial({ color: bannerColor, roughness: 0.7, side: T.DoubleSide }));
+    bannerMesh.name = 'bannerCloth';
+    bannerMesh.position.set(0.5, 3.1, 0); g.add(bannerMesh);
+    // Accent stripe
+    const stripe = box(0.9, 0.12, 0.05, new T.MeshStandardMaterial({ color: accentColor, roughness: 0.5 }));
+    stripe.name = 'bannerStripe';
+    stripe.position.set(0.5, 2.42, 0); g.add(stripe);
+    // Base block
+    const base = box(0.3, 0.2, 0.3, stoneMat); base.name = 'poleBase';
+    base.position.y = -0.43; g.add(base);
+
+    g.position.set(x, 0, z);
+    group.add(g);
+    bannerMeshes.push({ mesh: bannerMesh, offset: Math.random()*Math.PI*2 });
+    return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: BRAZIER
+  // ═══════════════════════════════════════════════════════════
+  function makeBrazier(x, z, group, nameSuffix, isNobleSide) {
+    const g = new T.Group(); g.name = `brazier_${nameSuffix}`;
+    // Tripod legs
+    for (let i = 0; i < 3; i++) {
+      const legAngle = (i/3)*Math.PI*2;
+      const leg = cyl(0.02, 0.03, 0.8, 4, ironMat); leg.name = `leg_${i}`;
+      leg.position.set(Math.cos(legAngle)*0.18, 0.0, Math.sin(legAngle)*0.18);
+      leg.rotation.z = 0.22; leg.rotation.y = legAngle;
+      g.add(leg);
+    }
+    // Bowl
+    const bowl = new T.Mesh(new T.CylinderGeometry(0.22, 0.12, 0.22, 8, 1, true), ironMat);
+    bowl.name = 'bowl'; bowl.position.y = 0.52; bowl.castShadow = true; g.add(bowl);
+    // Fire glow
+    const fireMat = new T.MeshStandardMaterial({ color: 0xff6600, emissive: new T.Color(isNobleSide ? 0xff8800 : 0xff2200), emissiveIntensity: 3.0, transparent: true, opacity: 0.92 });
+    const fire = cone(0.18, 0.38, 6, fireMat); fire.name = 'fire';
+    fire.position.y = 0.8; g.add(fire);
+    // Inner brighter flame
+    const fireMat2 = new T.MeshStandardMaterial({ color: 0xffee00, emissive: new T.Color(0xffcc00), emissiveIntensity: 4.0, transparent: true, opacity: 0.7 });
+    const innerFire = cone(0.1, 0.28, 5, fireMat2); innerFire.name = 'innerFire';
+    innerFire.position.y = 0.9; g.add(innerFire);
+    // Point light
+    const fColor = isNobleSide ? 0xffaa44 : 0xff3300;
+    const fl = new T.PointLight(fColor, 1.4, 7, 2.0);
+    fl.name = 'brazierLight'; fl.position.y = 0.9;
+    fl.castShadow = false; g.add(fl);
+    brazierLights.push({ light: fl, offset: Math.random()*Math.PI*2, isNobre: isNobleSide });
+
+    g.position.set(x, 0, z);
+    group.add(g);
+    return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: FORTRESS WALL SEGMENT
+  // ═══════════════════════════════════════════════════════════
+  function makeWallSegment(x, z, rotY, w, mat, group, nameSuffix) {
+    const g = new T.Group(); g.name = `wallSeg_${nameSuffix}`;
+    const wall = box(w, 2.2, 0.6, mat); wall.name = 'wallBody';
+    wall.position.y = 0.65; g.add(wall);
+    // Battlements
+    const merlonCount = Math.max(2, Math.floor(w / 1.1));
+    for (let i = 0; i < merlonCount; i++) {
+      const merlon = box(0.42, 0.55, 0.65, mat); merlon.name = `merlon_${i}`;
+      merlon.position.set(-w/2 + 0.55 + i*(w/(merlonCount-0.5||1)), 1.98, 0);
+      g.add(merlon);
+    }
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY;
+    group.add(g);
+    return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: TOWER
+  // ═══════════════════════════════════════════════════════════
+  function makeTower(x, z, mat, roofColor, group, nameSuffix, height=4) {
+    const g = new T.Group(); g.name = `tower_${nameSuffix}`;
+    const base = cyl(0.7, 0.85, height, 8, mat); base.name = 'towerBase';
+    base.position.y = height/2 - 0.5; g.add(base);
+    // Battlements ring
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2;
+      const m = box(0.28, 0.45, 0.28, mat); m.name = `towerMerlon_${i}`;
+      m.position.set(Math.cos(a)*0.7, height-0.28, Math.sin(a)*0.7); g.add(m);
+    }
+    // Roof cone
+    const roof = cone(0.85, 1.2, 8, new T.MeshStandardMaterial({ color: roofColor, roughness: 0.65 }));
+    roof.name = 'towerRoof';
+    roof.position.y = height + 0.1; g.add(roof);
+    // Window slits
+    for (let i = 0; i < 3; i++) {
+      const wAngle = (i/3)*Math.PI*2;
+      const slit = box(0.1, 0.35, 0.12, new T.MeshStandardMaterial({ color: 0x000000, emissive: new T.Color(0x220011), emissiveIntensity: 0.5 }));
+      slit.name = `slit_${i}`;
+      slit.position.set(Math.cos(wAngle)*0.72, height*0.45, Math.sin(wAngle)*0.72);
+      slit.rotation.y = wAngle; g.add(slit);
+    }
+    g.position.set(x, 0, z);
+    group.add(g);
+    return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: WAR DRUM
+  // ═══════════════════════════════════════════════════════════
+  function makeWarDrum(x, z, group, nameSuffix) {
+    const g = new T.Group(); g.name = `warDrum_${nameSuffix}`;
+    const drumBody = cyl(0.35, 0.35, 0.5, 12, woodMat); drumBody.name = 'drumBody';
+    drumBody.position.y = 0.1; g.add(drumBody);
+    const drumTop = new T.Mesh(new T.CylinderGeometry(0.36,0.36,0.06,12), new T.MeshStandardMaterial({ color: 0xd4b080, roughness: 0.5 }));
+    drumTop.name = 'drumTop'; drumTop.position.y = 0.37; g.add(drumTop);
+    const drumBot = drumTop.clone(); drumBot.name = 'drumBot'; drumBot.position.y = -0.11; g.add(drumBot);
+    // Rope cross-lacing
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2;
+      const rope = cyl(0.01, 0.01, 0.55, 4, new T.MeshStandardMaterial({ color: 0x8b6914, roughness: 0.8 }));
+      rope.name = `rope_${i}`; rope.rotation.z = Math.PI/2;
+      rope.position.set(Math.cos(a)*0.34, 0.1, Math.sin(a)*0.34);
+      g.add(rope);
+    }
+    // Two drumsticks
+    for (let s = -1; s <= 1; s+=2) {
+      const stick = cyl(0.025, 0.015, 0.5, 4, woodMat); stick.name = `stick_${s}`;
+      stick.rotation.z = s * 0.6; stick.position.set(s*0.2, 0.55, -0.05); g.add(stick);
+    }
+    // Legs
+    for (let i = 0; i < 3; i++) {
+      const la = (i/3)*Math.PI*2;
+      const leg = cyl(0.03, 0.04, 0.3, 4, woodMat); leg.name = `drumLeg_${i}`;
+      leg.position.set(Math.cos(la)*0.28, -0.23, Math.sin(la)*0.28); g.add(leg);
+    }
+    g.position.set(x, 0, z); group.add(g); return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: SHIELD RACK
+  // ═══════════════════════════════════════════════════════════
+  function makeShieldRack(x, z, rotY, isNoble, group, nameSuffix) {
+    const g = new T.Group(); g.name = `shieldRack_${nameSuffix}`;
+    // Horizontal bar
+    const bar = cyl(0.03, 0.03, 1.6, 4, woodMat); bar.name = 'rackBar';
+    bar.rotation.z = Math.PI/2; bar.position.y = 0.65; g.add(bar);
+    // Two upright posts
+    for (let s = -1; s<=1; s+=2) {
+      const post = cyl(0.04, 0.04, 1.4, 4, woodMat); post.name = `post_${s}`;
+      post.position.set(s*0.72, 0.22, 0); g.add(post);
+    }
+    // 3 shields on the rack
+    const shieldColors = isNoble ? [0x1a4fa3, 0xe8e0cc, 0xd4a020] : [0x8b0000, 0x2c2c3a, 0x6a006a];
+    for (let i = 0; i < 3; i++) {
+      const sh = box(0.38, 0.5, 0.06, new T.MeshStandardMaterial({ color: shieldColors[i], roughness: 0.6 }));
+      sh.name = `shield_${i}`;
+      sh.position.set(-0.55 + i*0.55, 0.6, 0.12);
+      // Boss in center
+      const boss = new T.Mesh(new T.SphereGeometry(0.07,6,6), ironMat); boss.name = `boss_${i}`;
+      boss.position.set(-0.55+i*0.55, 0.6, 0.19); g.add(sh); g.add(boss);
+    }
+    g.position.set(x, 0, z); g.rotation.y = rotY; group.add(g); return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: STATUE GUARD (low-poly silhouette soldier)
+  // ═══════════════════════════════════════════════════════════
+  function makeStatueGuard(x, z, rotY, mat, spearColor, group, nameSuffix) {
+    const g = new T.Group(); g.name = `guard_${nameSuffix}`;
+    // Body
+    const body = box(0.42, 0.7, 0.28, mat); body.name = 'guardBody'; body.position.y = 0.5; g.add(body);
+    // Head
+    const head = new T.Mesh(new T.SphereGeometry(0.2,8,8), mat); head.name = 'guardHead'; head.position.y = 1.15; g.add(head);
+    // Helmet
+    const helm = cone(0.22, 0.32, 7, mat); helm.name = 'guardHelm'; helm.position.y = 1.38; g.add(helm);
+    // Legs
+    for (let s=-1;s<=1;s+=2) {
+      const leg = box(0.14, 0.55, 0.18, mat); leg.name = `guardLeg_${s}`;
+      leg.position.set(s*0.13, -0.05, 0); g.add(leg);
+    }
+    // Arms
+    for (let s=-1;s<=1;s+=2) {
+      const arm = box(0.12, 0.48, 0.15, mat); arm.name = `guardArm_${s}`;
+      arm.position.set(s*0.28, 0.5, 0); g.add(arm);
+    }
+    // Spear
+    const spearMat = new T.MeshStandardMaterial({ color: spearColor, roughness: 0.4, metalness: 0.6 });
+    const shaft = cyl(0.025, 0.025, 2.2, 5, woodMat); shaft.name = 'spearShaft';
+    shaft.position.set(0.28, 1.2, 0); g.add(shaft);
+    const tip = cone(0.06, 0.28, 5, spearMat); tip.name = 'spearTip';
+    tip.position.set(0.28, 2.42, 0); g.add(tip);
+    // Shield on arm
+    const shMat = new T.MeshStandardMaterial({ color: spearColor, roughness: 0.6 });
+    const shieldMesh = box(0.32, 0.44, 0.06, shMat); shieldMesh.name = 'guardShield';
+    shieldMesh.position.set(-0.36, 0.5, 0); g.add(shieldMesh);
+
+    g.position.set(x, 0, z); g.rotation.y = rotY; group.add(g); return g;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: SMOKE COLUMN
+  // ═══════════════════════════════════════════════════════════
+  function addSmokeColumn(x, z, group, nameSuffix) {
+    const col = new T.Group(); col.name = `smokeCol_${nameSuffix}`;
+    for (let i = 0; i < 6; i++) {
+      const puff = new T.Mesh(new T.SphereGeometry(0.5+i*0.35, 7, 7), smokeMat.clone());
+      puff.name = `puff_${i}`;
+      puff.position.set(Math.sin(i*1.3)*0.4, 1.5+i*1.1, Math.cos(i*1.1)*0.3);
+      puff.userData = { baseY: 1.5+i*1.1, phase: i*0.8 + Math.random()*2 };
+      col.add(puff); smokeParticles.push(puff);
+    }
+    col.position.set(x, 0, z); group.add(col);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  WHITE KINGDOM  (z < 0 side — noble, ivory, gold, blue)
+  //  White pieces start at rows 0-1 in chess → z = -3.5..-4.5
+  //  Noble fortress staged at z = -10 .. -22
+  // ═══════════════════════════════════════════════════════════
+  const WZ = -1; // z-offset direction for white side
+
+  // Staging area ground patch — lighter sand/marble
+  const nobleGround = new T.Mesh(new T.PlaneGeometry(26, 18, 1, 1),
+    new T.MeshStandardMaterial({ color: 0x9e8e6e, roughness: 0.9 }));
+  nobleGround.name = 'nobleGroundPatch';
+  nobleGround.rotation.x = -Math.PI/2; nobleGround.position.set(0, -0.545, -16);
+  whiteKingdomGroup.add(nobleGround);
+
+  // Inner fortress wall (midground) z = -10
+  makeWallSegment(-5, -10, 0, 4.5, ivoryStoneMat, whiteKingdomGroup, 'wInner_L');
+  makeWallSegment( 5, -10, 0, 4.5, ivoryStoneMat, whiteKingdomGroup, 'wInner_R');
+  makeWallSegment( 0, -10, 0, 4.0, ivoryStoneMat, whiteKingdomGroup, 'wInner_C');
+
+  // Inner towers at z = -10
+  makeTower(-7.8, -10, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wInner_L', 4.5);
+  makeTower( 7.8, -10, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wInner_R', 4.5);
+
+  // Outer fortress wall (background) z = -17
+  makeWallSegment(-6, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_L');
+  makeWallSegment( 6, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_R');
+  makeWallSegment( 0, -17, 0, 5.5, ivoryStoneMat, whiteKingdomGroup, 'wOuter_C');
+
+  // Outer towers z = -17
+  makeTower(-10, -17, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_L', 6);
+  makeTower( 10, -17, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wOuter_R', 6);
+  makeTower(  0, -22, ivoryStoneMat, 0xd4a020, whiteKingdomGroup, 'wOuter_C', 8); // central keep
+
+  // Noble banner poles flanking board
+  makeBannerPole(-7.2, -8, 0x1a4fa3, 0xd4a020, whiteKingdomGroup, 'wL1');
+  makeBannerPole( 7.2, -8, 0x1a4fa3, 0xd4a020, whiteKingdomGroup, 'wR1');
+  makeBannerPole(-9.5,-13, 0x1a4fa3, 0xffffff, whiteKingdomGroup, 'wL2');
+  makeBannerPole( 9.5,-13, 0x1a4fa3, 0xffffff, whiteKingdomGroup, 'wR2');
+
+  // Braziers — noble warm gold fire flanking staging area
+  makeBrazier(-5.8, -8.5, whiteKingdomGroup, 'wL1', true);
+  makeBrazier( 5.8, -8.5, whiteKingdomGroup, 'wR1', true);
+  makeBrazier(-8.5,-12.5, whiteKingdomGroup, 'wL2', true);
+  makeBrazier( 8.5,-12.5, whiteKingdomGroup, 'wR2', true);
+
+  // Statue guards flanking the noble approach
+  makeStatueGuard(-6.8, -8.8, 0.4, ivoryStoneMat, 0xd4a020, whiteKingdomGroup, 'wGuard_L1');
+  makeStatueGuard( 6.8, -8.8,-0.4, ivoryStoneMat, 0xd4a020, whiteKingdomGroup, 'wGuard_R1');
+  makeStatueGuard(-9.0,-12.8, 0.3, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wGuard_L2');
+  makeStatueGuard( 9.0,-12.8,-0.3, ivoryStoneMat, 0x1a4fa3, whiteKingdomGroup, 'wGuard_R2');
+
+  // Shield racks
+  makeShieldRack(-10.5, -9.5, 0.3, true, whiteKingdomGroup, 'wRack_L');
+  makeShieldRack( 10.5, -9.5,-0.3, true, whiteKingdomGroup, 'wRack_R');
+
+  // War drums
+  makeWarDrum(-11.5,-11, whiteKingdomGroup, 'wDrum_L');
+  makeWarDrum( 11.5,-11, whiteKingdomGroup, 'wDrum_R');
+  makeWarDrum(  0.0,-13, whiteKingdomGroup, 'wDrum_C');
+
+  // Smoke from towers
+  addSmokeColumn(-10, -17.5, whiteKingdomGroup, 'wSmoke_L');
+  addSmokeColumn( 10, -17.5, whiteKingdomGroup, 'wSmoke_R');
+  addSmokeColumn(  0, -22.5, whiteKingdomGroup, 'wSmoke_C');
+
+  // Noble ambient fill light over white staging
+  const nobleLight = new T.PointLight(0x8899ff, 0.6, 25, 1.5);
+  nobleLight.name = 'nobleAmbientLight'; nobleLight.position.set(0, 6, -14);
+  whiteKingdomGroup.add(nobleLight);
+
+  // ═══════════════════════════════════════════════════════════
+  //  BLACK KINGDOM  (z > 0 side — dark, obsidian, crimson)
+  //  Black pieces start at rows 6-7 in chess → z = 2.5..3.5
+  //  Dark fortress staged at z = +10 .. +22
+  // ═══════════════════════════════════════════════════════════
+
+  // Dark staging ground
+  const darkGround = new T.Mesh(new T.PlaneGeometry(26, 18, 1, 1),
+    new T.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.95 }));
+  darkGround.name = 'darkGroundPatch';
+  darkGround.rotation.x = -Math.PI/2; darkGround.position.set(0, -0.545, 16);
+  blackKingdomGroup.add(darkGround);
+
+  // Inner dark fortress wall z = +10
+  makeWallSegment(-5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_L');
+  makeWallSegment( 5,  10, 0, 4.5, darkStoneMat, blackKingdomGroup, 'bInner_R');
+  makeWallSegment( 0,  10, 0, 4.0, darkStoneMat, blackKingdomGroup, 'bInner_C');
+
+  // Inner dark towers z = +10
+  makeTower(-7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_L', 4.5);
+  makeTower( 7.8,  10, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bInner_R', 4.5);
+
+  // Outer dark fortress z = +17
+  makeWallSegment(-6,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_L');
+  makeWallSegment( 6,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_R');
+  makeWallSegment( 0,  17, 0, 5.5, darkStoneMat, blackKingdomGroup, 'bOuter_C');
+
+  makeTower(-10,  17, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_L', 6);
+  makeTower( 10,  17, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bOuter_R', 6);
+  makeTower(  0,  22, darkStoneMat, 0x3d0d5c, blackKingdomGroup, 'bOuter_C', 8); // dark keep
+
+  // Dark banner poles
+  makeBannerPole(-7.2,  8, 0x8b0000, 0x3d0d5c, blackKingdomGroup, 'bL1');
+  makeBannerPole( 7.2,  8, 0x8b0000, 0x3d0d5c, blackKingdomGroup, 'bR1');
+  makeBannerPole(-9.5, 13, 0x8b0000, 0xff3300, blackKingdomGroup, 'bL2');
+  makeBannerPole( 9.5, 13, 0x8b0000, 0xff3300, blackKingdomGroup, 'bR2');
+
+  // Braziers — dark crimson fire
+  makeBrazier(-5.8,  8.5, blackKingdomGroup, 'bL1', false);
+  makeBrazier( 5.8,  8.5, blackKingdomGroup, 'bR1', false);
+  makeBrazier(-8.5, 12.5, blackKingdomGroup, 'bL2', false);
+  makeBrazier( 8.5, 12.5, blackKingdomGroup, 'bR2', false);
+
+  // Dark statue guards
+  makeStatueGuard(-6.8,  8.8, Math.PI-0.4, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bGuard_L1');
+  makeStatueGuard( 6.8,  8.8, Math.PI+0.4, darkStoneMat, 0x8b0000, blackKingdomGroup, 'bGuard_R1');
+  makeStatueGuard(-9.0, 12.8, Math.PI-0.3, darkStoneMat, 0x3d0d5c, blackKingdomGroup, 'bGuard_L2');
+  makeStatueGuard( 9.0, 12.8, Math.PI+0.3, darkStoneMat, 0x3d0d5c, blackKingdomGroup, 'bGuard_R2');
+
+  // Shield racks
+  makeShieldRack(-10.5,  9.5, Math.PI-0.3, false, blackKingdomGroup, 'bRack_L');
+  makeShieldRack( 10.5,  9.5, Math.PI+0.3, false, blackKingdomGroup, 'bRack_R');
+
+  // War drums
+  makeWarDrum(-11.5, 11, blackKingdomGroup, 'bDrum_L');
+  makeWarDrum( 11.5, 11, blackKingdomGroup, 'bDrum_R');
+  makeWarDrum(   0, 13,  blackKingdomGroup, 'bDrum_C');
+
+  // Smoke from dark towers
+  addSmokeColumn(-10,  17.5, blackKingdomGroup, 'bSmoke_L');
+  addSmokeColumn( 10,  17.5, blackKingdomGroup, 'bSmoke_R');
+  addSmokeColumn(  0,  22.5, blackKingdomGroup, 'bSmoke_C');
+
+  // Eerie purple/red ambient for dark side
+  const darkLight = new T.PointLight(0xff2200, 0.5, 25, 1.5);
+  darkLight.name = 'darkAmbientLight'; darkLight.position.set(0, 6, 14);
+  blackKingdomGroup.add(darkLight);
+
+  // ═══════════════════════════════════════════════════════════
+  //  SIDE WAR PROPS  (left + right edges, symmetric)
+  // ═══════════════════════════════════════════════════════════
+  // More banner poles along the sides
+  for (let side = -1; side <= 1; side += 2) {
+    makeBannerPole(side*11, -5, side < 0 ? 0x1a4fa3 : 0x8b0000, 0xd4a020, warPropsGroup, `side_${side}_1`);
+    makeBannerPole(side*11,  0, side < 0 ? 0x1a4fa3 : 0x8b0000, 0xd4a020, warPropsGroup, `side_${side}_2`);
+    makeBannerPole(side*11,  5, side < 0 ? 0x1a4fa3 : 0x8b0000, 0xd4a020, warPropsGroup, `side_${side}_3`);
+    makeBrazier(side*9.5, -3.5, warPropsGroup, `sideB_${side}_1`, side < 0);
+    makeBrazier(side*9.5,  3.5, warPropsGroup, `sideB_${side}_2`, side < 0);
+  }
+
+  // Stone rubble piles at corners
+  const rubbleMat = new T.MeshStandardMaterial({ color: 0x6b5e4a, roughness: 0.95 });
+  const rubblePositions = [[-8,-8],[-8,8],[8,-8],[8,8]];
+  rubblePositions.forEach(([rx,rz],ri) => {
+    const rg = new T.Group(); rg.name = `rubble_${ri}`;
+    for (let k = 0; k < 5; k++) {
+      const rock = new T.Mesh(new T.DodecahedronGeometry(0.15+Math.random()*0.2, 0), rubbleMat);
+      rock.name = `rubbleRock_${k}`;
+      rock.position.set(rx+Math.random()*0.5-0.25, -0.45, rz+Math.random()*0.5-0.25);
+      rock.rotation.set(Math.random()*2,Math.random()*2,Math.random()*2);
+      rg.add(rock);
+    }
+    warPropsGroup.add(rg);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  ATMOSPHERE — embers, distant haze mountains, skyline
+  // ═══════════════════════════════════════════════════════════
+  // Ember particles (simple small glowing spheres drifting upward)
+  const emberGeo = new T.SphereGeometry(0.04, 4, 4);
+  const emberPositions = [
+    [-5.8,-8.5],[5.8,-8.5],[-8.5,-12.5],[8.5,-12.5],
+    [-5.8, 8.5],[5.8, 8.5],[-8.5, 12.5],[8.5, 12.5],
+    [-9.5,-3.5],[9.5,-3.5],[-9.5,3.5],[9.5,3.5],
+  ];
+  emberPositions.forEach(([ex,ez],ei) => {
+    for (let k = 0; k < 4; k++) {
+      const emb = new T.Mesh(emberGeo, emberMat);
+      emb.name = `ember_${ei}_${k}`;
+      emb.position.set(ex + Math.random()*0.6-0.3, 0.5+Math.random()*2, ez + Math.random()*0.6-0.3);
+      emb.userData = {
+        baseX: ex, baseZ: ez,
+        phase: Math.random()*Math.PI*2,
+        speed: 0.4 + Math.random()*0.6,
+        radius: 0.2 + Math.random()*0.3,
+      };
+      atmosphereGroup.add(emb);
+      embers.push(emb);
+    }
+  });
+
+  // Distant silhouette mountains (very low poly backdrop)
+  const mountMat = new T.MeshStandardMaterial({ color: 0x1a1520, roughness: 1.0 });
+  const mountAngles = [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6, Math.PI-0.3, Math.PI, Math.PI+0.3];
+  mountAngles.forEach((a, mi) => {
+    const dist = 48 + Math.random()*12;
+    const h = 5 + Math.random()*9;
+    const w = 7 + Math.random()*8;
+    const mount = new T.Mesh(new T.ConeGeometry(w, h, 5), mountMat);
+    mount.name = `mountain_${mi}`;
+    mount.position.set(Math.cos(a)*dist, h*0.3 - 0.55, Math.sin(a)*dist);
+    mount.scale.y = 0.55 + Math.random()*0.3;
+    atmosphereGroup.add(mount);
+  });
+
+  // Distant battle fire glow on horizons (emissive planes)
+  const glowMat = new T.MeshStandardMaterial({ color: 0xff3300, emissive: new T.Color(0xff1100), emissiveIntensity: 1.2, transparent: true, opacity: 0.12, depthWrite: false, side: T.DoubleSide });
+  [[-18, 0.65], [18, 0.55]].forEach(([gz, gi], gi2) => {
+    const gp = new T.Mesh(new T.PlaneGeometry(20, 3), glowMat);
+    gp.name = `horizonGlow_${gi2}`;
+    gp.position.set(0, 1, gz); gp.rotation.x = -0.15;
+    atmosphereGroup.add(gp);
+  });
+
+  // ── Update sky shader and fog to war mood ──
+  // (skyMat is defined globally in scene.js; we update uniforms after the fact)
+  // We use a delayed call since skyMat is defined later in scene.js load order.
+  // Instead we expose a patchSky function for scene.js to call.
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UPDATE — call this every frame from animate()
+//  updateEnvironment(time)  where time = performance.now()/1000
+// ═══════════════════════════════════════════════════════════
+export function updateEnvironment(time) {
+  // Brazier flicker
+  brazierLights.forEach(({ light, offset, isNobre }) => {
+    const flicker = Math.sin(time * 9.3 + offset) * 0.3 + Math.sin(time * 7.1 + offset * 2) * 0.2;
+    light.intensity = (isNobre ? 1.4 : 1.2) + flicker * 0.6;
+  });
+
+  // Banner sway
+  bannerMeshes.forEach(({ mesh, offset }) => {
+    mesh.rotation.z = Math.sin(time * 1.1 + offset) * 0.06;
+    mesh.position.x = 0.5 + Math.sin(time * 1.1 + offset) * 0.04;
+  });
+
+  // Ember drift upward and reset
+  embers.forEach(emb => {
+    const ud = emb.userData;
+    emb.position.y += 0.008;
+    emb.position.x = ud.baseX + Math.sin(time * ud.speed + ud.phase) * ud.radius;
+    emb.position.z = ud.baseZ + Math.cos(time * ud.speed * 0.7 + ud.phase) * ud.radius * 0.5;
+    // Fade out at top, reset at bottom
+    const h = emb.position.y;
+    if (h > 4.5) { emb.position.y = 0.3; }
+    emb.material.opacity = 0.6 + Math.sin(time * 6 + ud.phase) * 0.3;
+    const scale = 0.5 + (h / 4.5) * 0.5;
+    emb.scale.setScalar(scale);
+  });
+
+  // Smoke puff drift + gentle oscillation
+  smokeParticles.forEach(puff => {
+    const ud = puff.userData;
+    puff.position.y = ud.baseY + Math.sin(time * 0.4 + ud.phase) * 0.3;
+    puff.position.x += 0.001;
+    puff.material.opacity = 0.1 + Math.sin(time * 0.3 + ud.phase) * 0.06;
+    puff.rotation.y = time * 0.05 + ud.phase;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SKY MOOD PATCH — call after skyMat is available
+//  patchSkyForWar(skyMat)
+// ═══════════════════════════════════════════════════════════
+export function patchSkyForWar(skyMat) {
+  if (!skyMat || !skyMat.uniforms) return;
+  skyMat.uniforms.uZenithColor.value.set(0x1a1428);
+  skyMat.uniforms.uHorizonColor.value.set(0x6b3020);
+  skyMat.uniforms.uGroundColor.value.set(0x221510);
+  skyMat.uniforms.uSunGlowColor.value.set(0xff6622);
+}

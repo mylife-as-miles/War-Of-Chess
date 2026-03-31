@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { initEnvironment, updateEnvironment, patchSkyForWar } from './environment.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -10,8 +11,9 @@ import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass.js';
 
 // ============ SCENE SETUP ============
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x3a2a1a);
-scene.fog = new THREE.FogExp2(0x887766, 0.012);
+
+// Initialize the stylized battlefield environment
+initEnvironment(scene, THREE);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
 camera.position.set(0, 14, 14);
@@ -2760,219 +2762,8 @@ for (let i = 0; i < 10; i++) {
   scene.add(cloud);
 }
 
-// Ground with subtle procedural detail
-const environmentGroup = new THREE.Group();
-environmentGroup.name = 'environmentGroup';
-scene.add(environmentGroup);
-
-const whiteKingdomGroup = new THREE.Group();
-whiteKingdomGroup.name = 'whiteKingdomGroup';
-scene.add(whiteKingdomGroup);
-
-const blackKingdomGroup = new THREE.Group();
-blackKingdomGroup.name = 'blackKingdomGroup';
-scene.add(blackKingdomGroup);
-
-const warPropsGroup = new THREE.Group();
-warPropsGroup.name = 'warPropsGroup';
-scene.add(warPropsGroup);
-
-const atmosphereGroup = new THREE.Group();
-atmosphereGroup.name = 'atmosphereGroup';
-scene.add(atmosphereGroup);
-
-// Ground - stylized battlefield
-const groundMat = new THREE.MeshPhysicalMaterial({
-  color: 0x3d352b, roughness: 0.95, metalness: 0,
-  sheen: 0.1, sheenColor: new THREE.Color(0x5a4d40), sheenRoughness: 0.8,
-});
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120, 32, 32), groundMat);
-ground.name = 'ground';
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.55;
-ground.receiveShadow = true;
-environmentGroup.add(ground);
-
-// Subtle ground vertex displacement for rough terrain
-{
-  const pos = ground.geometry.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i);
-    const dist = Math.sqrt(x * x + y * y);
-    if (dist > 8) { // outside the board area
-      const h = (Math.sin(x * 0.2) * Math.cos(y * 0.15) + Math.sin(x * 0.1 + y * 0.12) * 0.5) * 0.4;
-      pos.setZ(i, h * Math.min(1, (dist - 8) / 10));
-    }
-  }
-  pos.needsUpdate = true;
-  ground.geometry.computeVertexNormals();
-}
-
-// Board platform enhancements (stone trim around the board)
-const platformTrimMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.8, metalness: 0.1 });
-const platformTrim = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.4, 10.2), platformTrimMat);
-platformTrim.position.y = -0.65;
-platformTrim.receiveShadow = true;
-platformTrim.castShadow = true;
-environmentGroup.add(platformTrim);
-
-// White Kingdom (Noble, ivory stone, gold trim, blue banners)
-// Positioned behind the white pieces (z < 0)
-const whiteStoneMat = new THREE.MeshStandardMaterial({ color: 0xe8ddd0, roughness: 0.7 });
-const goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
-const blueBannerMat = new THREE.MeshStandardMaterial({ color: 0x2244aa, roughness: 0.9, side: THREE.DoubleSide });
-
-// White Fortress
-const whiteFortress = new THREE.Group();
-whiteFortress.position.set(0, 0, -18);
-whiteKingdomGroup.add(whiteFortress);
-
-// Main tower
-const wTower = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.5, 8, 8), whiteStoneMat);
-wTower.position.y = 3.5;
-wTower.castShadow = true;
-wTower.receiveShadow = true;
-whiteFortress.add(wTower);
-
-// Tower crown
-const wCrown = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 1, 8), whiteStoneMat);
-wCrown.position.y = 8;
-wCrown.castShadow = true;
-whiteFortress.add(wCrown);
-
-// Walls
-const wWallGeo = new THREE.BoxGeometry(12, 5, 2);
-const wWall1 = new THREE.Mesh(wWallGeo, whiteStoneMat);
-wWall1.position.set(-7.5, 2, 0);
-wWall1.castShadow = true;
-whiteFortress.add(wWall1);
-
-const wWall2 = new THREE.Mesh(wWallGeo, whiteStoneMat);
-wWall2.position.set(7.5, 2, 0);
-wWall2.castShadow = true;
-whiteFortress.add(wWall2);
-
-// Black Kingdom (Dark, obsidian/iron stone, crimson/purple banners)
-// Positioned behind the black pieces (z > 0)
-const blackStoneMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.2 });
-const ironTrimMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5, metalness: 0.9 });
-const redBannerMat = new THREE.MeshStandardMaterial({ color: 0xaa2222, roughness: 0.9, side: THREE.DoubleSide });
-
-// Black Fortress
-const blackFortress = new THREE.Group();
-blackFortress.position.set(0, 0, 18);
-blackKingdomGroup.add(blackFortress);
-
-// Main tower (spikier)
-const bTower = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 4, 9, 6), blackStoneMat);
-bTower.position.y = 4;
-bTower.castShadow = true;
-bTower.receiveShadow = true;
-blackFortress.add(bTower);
-
-// Tower spikes
-const bSpikeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6, metalness: 0.5 });
-for(let i=0; i<6; i++) {
-  const angle = (i/6) * Math.PI * 2;
-  const spike = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 4), bSpikeMat);
-  spike.position.set(Math.cos(angle)*2.8, 9.5, Math.sin(angle)*2.8);
-  blackFortress.add(spike);
-}
-
-// Walls
-const bWallGeo = new THREE.BoxGeometry(12, 6, 2);
-const bWall1 = new THREE.Mesh(bWallGeo, blackStoneMat);
-bWall1.position.set(-7.5, 2.5, 0);
-bWall1.castShadow = true;
-blackFortress.add(bWall1);
-
-const bWall2 = new THREE.Mesh(bWallGeo, blackStoneMat);
-bWall2.position.set(7.5, 2.5, 0);
-bWall2.castShadow = true;
-blackFortress.add(bWall2);
-
-// War Props
-// Braziers around the board
-const brazierGeo = new THREE.CylinderGeometry(0.4, 0.2, 0.8, 6);
-const brazierMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.7, metalness: 0.8 });
-const fireMat = new THREE.MeshPhysicalMaterial({ color: 0xff6622, emissive: 0xff4400, emissiveIntensity: 2.0, transparent: true, opacity: 0.9 });
-
-const brazierPositions = [
-  [-6, -6], [6, -6], [-6, 6], [6, 6],
-  [-8, 0], [8, 0]
-];
-
-brazierPositions.forEach(pos => {
-  const brazierGroup = new THREE.Group();
-  brazierGroup.position.set(pos[0], -0.15, pos[1]);
-  
-  const brazier = new THREE.Mesh(brazierGeo, brazierMat);
-  brazier.castShadow = true;
-  brazierGroup.add(brazier);
-  
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 6), fireMat);
-  flame.name = 'flame';
-  flame.position.y = 0.6;
-  brazierGroup.add(flame);
-  
-  const bLight = new THREE.PointLight(0xff6633, 0.8, 8);
-  bLight.name = 'torchLight';
-  bLight.position.y = 0.6;
-  brazierGroup.add(bLight);
-  
-  warPropsGroup.add(brazierGroup);
-});
-
-// Banners
-for(let i=0; i<4; i++) {
-  const isWhite = i < 2;
-  const x = (i%2 === 0 ? -1 : 1) * 4;
-  const z = isWhite ? -8 : 8;
-  
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4, 8), new THREE.MeshStandardMaterial({color: 0x443322}));
-  pole.position.set(x, 1.5, z);
-  pole.castShadow = true;
-  warPropsGroup.add(pole);
-  
-  const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.5), isWhite ? blueBannerMat : redBannerMat);
-  banner.name = 'banner';
-  banner.position.set(x + 0.6, 2, z);
-  banner.castShadow = true;
-  banner.userData.phaseOffset = Math.random() * Math.PI * 2;
-  warPropsGroup.add(banner);
-}
-
-// Weapons / Shields scattered
-const shieldGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 12);
-for(let i=0; i<12; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 7 + Math.random() * 5;
-  const isWhite = Math.sin(angle) < 0; // z < 0
-  
-  const shield = new THREE.Mesh(shieldGeo, isWhite ? goldTrimMat : ironTrimMat);
-  shield.position.set(Math.cos(angle)*dist, -0.4, Math.sin(angle)*dist);
-  shield.rotation.set(Math.random(), Math.random(), Math.random());
-  shield.castShadow = true;
-  warPropsGroup.add(shield);
-}
-
-// Atmosphere (Smoke / Dust)
-const smokeMat = new THREE.MeshPhysicalMaterial({
-  color: 0x888888, roughness: 1.0, transparent: true, opacity: 0.3, depthWrite: false
-});
-for(let i=0; i<15; i++) {
-  const smoke = new THREE.Mesh(new THREE.SphereGeometry(1.5 + Math.random(), 8, 8), smokeMat);
-  smoke.name = 'smoke';
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 10 + Math.random() * 15;
-  smoke.position.set(Math.cos(angle)*dist, Math.random()*2, Math.sin(angle)*dist);
-  smoke.userData = {
-    speed: 0.2 + Math.random()*0.3,
-    phase: Math.random() * Math.PI * 2,
-    baseY: smoke.position.y
-  };
-  atmosphereGroup.add(smoke);
-}
+// Apply war mood to the sky shader
+patchSkyForWar(skyMat);
 
 // ============ CAMERA SHAKE ============
 const cameraShake = {
@@ -3101,37 +2892,8 @@ function animate() {
   pointLight.color.setHSL(hue, 0.2, 0.65);
   pointLight.intensity = 0.35 + Math.sin(time * 0.5) * 0.05;
 
-  // Banners sway
-  warPropsGroup.children.forEach(child => {
-    if (child.name === 'banner') {
-      child.rotation.y = Math.sin(time * 1.5 + child.userData.phaseOffset) * 0.15;
-      child.rotation.z = Math.sin(time * 2.0 + child.userData.phaseOffset) * 0.05;
-    }
-  });
-
-  // Smoke drift
-  atmosphereGroup.children.forEach(child => {
-    if (child.name === 'smoke') {
-      const ud = child.userData;
-      child.position.y = ud.baseY + Math.sin(time * ud.speed + ud.phase) * 1.5;
-      child.position.x += Math.sin(time * ud.speed * 0.5) * 0.01;
-      child.scale.setScalar(1.0 + Math.sin(time * ud.speed + ud.phase) * 0.2);
-    }
-  });
-
-  // Brazier torch flicker
-  warPropsGroup.children.forEach(child => {
-    child.children.forEach(c => {
-      if (c.name === 'flame') {
-        c.scale.y = 0.9 + Math.sin(time * 8 + child.position.x * 3) * 0.2;
-        c.scale.x = 0.95 + Math.sin(time * 6.5) * 0.1;
-        c.position.x = Math.sin(time * 5) * 0.008;
-      }
-      if (c.name === 'torchLight') {
-        c.intensity = 0.8 + Math.sin(time * 7 + Math.random() * 0.3) * 0.25;
-      }
-    });
-  });
+  // Update new environment animations
+  updateEnvironment(time);
 
   // Prison torch flicker
   [prisonWhiteGroup, prisonBlackGroup].forEach(pg => {
