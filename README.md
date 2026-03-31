@@ -1,11 +1,16 @@
-<div align="center">
+# Remix: Whimsical 3D chess game
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Created with [Omma](https://omma.build)
 
-  <h1>Built with AI Studio</h2>
+## Setup
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+```bash
+npm install
+npm run dev
+```
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Build
 
-</div>
+```bash
+npm run build
+```
