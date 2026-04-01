@@ -24,7 +24,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'h
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.VSMShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -359,13 +359,15 @@ buildPrison(prisonBlackGroup, 'prisonBlack');
 let prisonPiecesWhite = []; // White pieces captured by black → go to prisonWhite
 let prisonPiecesBlack = []; // Black pieces captured by white → go to prisonBlack
 
-function addToPrison(pieceCode, isWhitePiece) {
+function addToPrison(pieceCode, isWhitePiece, existingObj = null, forceIdx = null) {
   const prisonGroup = isWhitePiece ? prisonWhiteGroup : prisonBlackGroup;
   const prisonPieces = isWhitePiece ? prisonPiecesWhite : prisonPiecesBlack;
   const type = pieceCode[1];
-  const idx = prisonPieces.length;
+  
+  // Use forced index if provided, otherwise append
+  const idx = forceIdx !== null ? forceIdx : prisonPieces.length;
 
-  const pieceObj = pieceCreators[type](isWhitePiece);
+  const pieceObj = existingObj || pieceCreators[type](isWhitePiece);
   pieceObj.name = `prisoner_${pieceCode}_${idx}_${Date.now()}`;
   pieceObj.scale.setScalar(0.7);
 
@@ -379,9 +381,9 @@ function addToPrison(pieceCode, isWhitePiece) {
 
   // Face the bars (toward the viewer)
   if (isWhitePiece) {
-    pieceObj.rotation.y = 0; // face toward +Z (bars side)
+    pieceObj.rotation.set(0, 0, 0); // face toward +Z (bars side)
   } else {
-    pieceObj.rotation.y = Math.PI; // face toward -Z (bars side)
+    pieceObj.rotation.set(0, Math.PI, 0); // face toward -Z (bars side)
   }
 
   pieceObj.userData = {
@@ -396,47 +398,54 @@ function addToPrison(pieceCode, isWhitePiece) {
   };
 
   prisonGroup.add(pieceObj);
-  prisonPieces.push(pieceObj);
+  
+  if (forceIdx !== null) {
+    prisonPieces[forceIdx] = pieceObj;
+  } else {
+    prisonPieces.push(pieceObj);
+  }
 
-  // Dramatic entry: piece flies in from above
-  const targetY = pieceObj.position.y;
-  pieceObj.position.y = 3;
-  pieceObj.scale.setScalar(0.01);
-  const startTime = performance.now() / 1000;
-  animations.push({
-    update: (time) => {
-      const t = Math.min(1, (time - startTime) / 0.6);
-      const ease = 1 - Math.pow(1 - t, 3);
-      pieceObj.position.y = 3 + (targetY - 3) * ease;
-      pieceObj.scale.setScalar(0.01 + 0.69 * ease);
-      pieceObj.rotation.y += (1 - t) * 0.15;
-      return t >= 1;
-    },
-    onComplete: () => {
-      pieceObj.position.y = targetY;
-      pieceObj.scale.setScalar(0.7);
-      // Landing bounce
-      const landStart = performance.now() / 1000;
-      animations.push({
-        update: (time) => {
-          const lt = Math.min(1, (time - landStart) / 0.35);
-          const bounce = Math.sin(lt * Math.PI * 3) * (1 - lt) * 0.12;
-          pieceObj.position.y = targetY + bounce;
-          pieceObj.scale.set(0.7 + bounce * 0.3, 0.7 - bounce * 0.2, 0.7 + bounce * 0.3);
-          return lt >= 1;
-        },
-        onComplete: () => {
-          pieceObj.position.y = targetY;
-          pieceObj.scale.setScalar(0.7);
-        }
-      });
-    }
-  });
+  if (!existingObj) {
+    // Dramatic entry: piece flies in from above
+    const targetY = pieceObj.position.y;
+    pieceObj.position.y = 3;
+    pieceObj.scale.setScalar(0.01);
+    const startTime = performance.now() / 1000;
+    animations.push({
+      update: (time) => {
+        const t = Math.min(1, (time - startTime) / 0.6);
+        const ease = 1 - Math.pow(1 - t, 3);
+        pieceObj.position.y = 3 + (targetY - 3) * ease;
+        pieceObj.scale.setScalar(0.01 + 0.69 * ease);
+        pieceObj.rotation.y += (1 - t) * 0.15;
+        return t >= 1;
+      },
+      onComplete: () => {
+        pieceObj.position.y = targetY;
+        pieceObj.scale.setScalar(0.7);
+        // Landing bounce
+        const landStart = performance.now() / 1000;
+        animations.push({
+          update: (time) => {
+            const lt = Math.min(1, (time - landStart) / 0.35);
+            const bounce = Math.sin(lt * Math.PI * 3) * (1 - lt) * 0.12;
+            pieceObj.position.y = targetY + bounce;
+            pieceObj.scale.set(0.7 + bounce * 0.3, 0.7 - bounce * 0.2, 0.7 + bounce * 0.3);
+            return lt >= 1;
+          },
+          onComplete: () => {
+            pieceObj.position.y = targetY;
+            pieceObj.scale.setScalar(0.7);
+          }
+        });
+      }
+    });
+  }
 }
 
 function clearPrisons() {
-  prisonPiecesWhite.forEach(p => prisonWhiteGroup.remove(p));
-  prisonPiecesBlack.forEach(p => prisonBlackGroup.remove(p));
+  prisonPiecesWhite.forEach(p => { if (p) prisonWhiteGroup.remove(p); });
+  prisonPiecesBlack.forEach(p => { if (p) prisonBlackGroup.remove(p); });
   prisonPiecesWhite = [];
   prisonPiecesBlack = [];
 }
@@ -2045,16 +2054,63 @@ function animateMovePiece(obj, toRow, toCol) {
 function animateCapture(obj) {
   const startTime = performance.now() / 1000;
   const startPos = obj.position.clone();
+  const startScale = obj.scale.clone();
+  const startRotY = obj.rotation.y;
+  
+  const isWhitePiece = obj.userData.isWhite;
+  const pieceCode = obj.userData.piece;
+  const prisonGroup = isWhitePiece ? prisonWhiteGroup : prisonBlackGroup;
+  const prisonPieces = isWhitePiece ? prisonPiecesWhite : prisonPiecesBlack;
+  const idx = prisonPieces.length;
+  
+  // Calculate target position inside the prison (local to prisonGroup)
+  const row = Math.floor(idx / 8);
+  const col = idx % 8;
+  const xPos = -2.8 + col * 0.8;
+  const zPos = isWhitePiece ? 0.4 - row * 0.9 : -0.4 + row * 0.9;
+  const targetLocalPos = new THREE.Vector3(xPos, -0.44, zPos);
+  
+  // Convert target to world coordinates to animate from current world pos
+  const targetWorldPos = targetLocalPos.clone();
+  prisonGroup.localToWorld(targetWorldPos);
+  
+  const targetScale = new THREE.Vector3(0.7, 0.7, 0.7);
+  const targetRotY = isWhitePiece ? 0 : Math.PI;
+
+  // Pre-add a placeholder to prisonPieces so the next capture calculates the correct idx
+  // We'll replace this placeholder with the actual object when the animation completes.
+  prisonPieces.push(null);
+
   animations.push({
     update: (time) => {
-      const t = Math.min(1, (time - startTime) / 0.4);
-      obj.position.y = startPos.y + Math.sin(t * Math.PI) * 1.5;
-      obj.scale.setScalar(1 - t);
-      obj.rotation.x += 0.15;
-      obj.rotation.z += 0.1;
+      const t = Math.min(1, (time - startTime) / 0.6); // 0.6s duration
+      
+      // Parabolic arc
+      const currentPos = new THREE.Vector3().lerpVectors(startPos, targetWorldPos, t);
+      currentPos.y += Math.sin(t * Math.PI) * 4.0; // Arc height
+      
+      obj.position.copy(currentPos);
+      obj.scale.lerpVectors(startScale, targetScale, t);
+      
+      // Spin wildly then settle
+      if (t < 0.8) {
+        obj.rotation.x += 0.2;
+        obj.rotation.z += 0.2;
+      } else {
+        // Settle rotation
+        const settleT = (t - 0.8) / 0.2;
+        obj.rotation.x = THREE.MathUtils.lerp(obj.rotation.x, 0, settleT);
+        obj.rotation.z = THREE.MathUtils.lerp(obj.rotation.z, 0, settleT);
+        obj.rotation.y = THREE.MathUtils.lerp(startRotY, targetRotY, t);
+      }
       return t >= 1;
     },
-    onComplete: () => { scene.remove(obj); }
+    onComplete: () => {
+      scene.remove(obj);
+      
+      // Add the actual piece to the prison at the reserved index
+      addToPrison(pieceCode, isWhitePiece, obj, idx);
+    }
   });
 }
 
@@ -2082,8 +2138,6 @@ function executeVisualMove(move) {
         animateCapture(cap);
         fireProjectile(capIsWhite);
         delete pieceObjects[epKey];
-        // Send to prison after short delay
-        setTimeout(() => addToPrison(capPiece, capIsWhite), 450);
       }
     } else {
       if (pieceObjects[toKey]) {
@@ -2095,7 +2149,6 @@ function executeVisualMove(move) {
         animateCapture(cap);
         fireProjectile(capIsWhite);
         delete pieceObjects[toKey];
-        setTimeout(() => addToPrison(capPiece, capIsWhite), 450);
       }
     }
   }
@@ -2465,16 +2518,52 @@ style.textContent = `
     .elo-presets .btn { font-size: 9px; padding: 2px 4px; }
     #message-popup { padding: 12px 20px; font-size: 16px; }
   }
+
+  /* ---- Game Menu ---- */
+  #game-menu {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 100; color: white; transition: opacity 0.3s;
+  }
+  #game-menu h1 {
+    font-family: 'Georgia', serif; font-size: clamp(40px, 8vw, 80px);
+    margin-bottom: 10px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  #game-menu .subtitle {
+    font-size: clamp(14px, 3vw, 20px); color: #aaa; margin-bottom: 40px;
+    letter-spacing: 1px;
+  }
+  .menu-btn {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
+    color: white; padding: 15px 40px; font-size: clamp(16px, 3vw, 24px);
+    border-radius: 8px; cursor: pointer; transition: all 0.2s;
+    margin-bottom: 20px; min-width: 250px; text-transform: uppercase;
+    letter-spacing: 2px; font-weight: 600;
+  }
+  .menu-btn:hover {
+    background: rgba(255,255,255,0.2); border-color: white;
+    transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+  #game-ui {
+    display: none; /* Hidden until game starts */
+  }
 `;
 document.head.appendChild(style);
 
+// Wrap existing UI elements in a container
+const gameUI = document.createElement('div');
+gameUI.id = 'game-ui';
+document.body.appendChild(gameUI);
+
 const statusBar = document.createElement('div');
 statusBar.id = 'status-bar';
-document.body.appendChild(statusBar);
+gameUI.appendChild(statusBar);
 
 const messagePopup = document.createElement('div');
 messagePopup.id = 'message-popup';
-document.body.appendChild(messagePopup);
+gameUI.appendChild(messagePopup);
 
 const controlsPanel = document.createElement('div');
 controlsPanel.id = 'controls-panel';
@@ -2484,7 +2573,7 @@ controlsPanel.innerHTML = `
   <button class="btn" id="btn-undo" title="Undo Move">↩️ Undo</button>
   <button class="btn" id="btn-settings" title="AI Settings">⚙️ AI</button>
 `;
-document.body.appendChild(controlsPanel);
+gameUI.appendChild(controlsPanel);
 
 const diffPanel = document.createElement('div');
 diffPanel.id = 'difficulty-panel';
@@ -2536,7 +2625,25 @@ diffPanel.innerHTML = `
     <button class="btn" data-elo="2800">GM</button>
   </div>
 `;
-document.body.appendChild(diffPanel);
+gameUI.appendChild(diffPanel);
+
+// Create Game Menu
+const gameMenu = document.createElement('div');
+gameMenu.id = 'game-menu';
+gameMenu.innerHTML = `
+  <h1>War of Chess</h1>
+  <div class="subtitle">A Whimsical 3D Battlefield</div>
+  <button class="menu-btn" id="btn-start-game">Start Game</button>
+`;
+document.body.appendChild(gameMenu);
+
+document.getElementById('btn-start-game').addEventListener('click', () => {
+  gameMenu.style.opacity = '0';
+  setTimeout(() => {
+    gameMenu.style.display = 'none';
+    gameUI.style.display = 'block';
+  }, 300);
+});
 
 function updateCapturedDisplay() {
   // Captured pieces shown in 3D prisons only
@@ -2818,11 +2925,12 @@ const cameraShake = {
 };
 
 // ============ ANIMATION LOOP ============
-const clock = new THREE.Clock();
+let lastTime = performance.now() / 1000;
 
 function animate() {
   const time = performance.now() / 1000;
-  const delta = clock.getDelta();
+  const delta = time - lastTime;
+  lastTime = time;
 
   controls.update();
 
